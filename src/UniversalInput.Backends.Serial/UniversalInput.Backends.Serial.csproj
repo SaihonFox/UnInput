@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<Description>Backend UniversalInput для COM-портов и последовательных устройств (System.IO.Ports).</Description>
+		<RootNamespace>UniversalInput.Backends.Serial</RootNamespace>
+	</PropertyGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\UniversalInput.Abstractions\UniversalInput.Abstractions.csproj" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="System.IO.Ports" />
+	</ItemGroup>
+	<ItemGroup>
+		<InternalsVisibleTo Include="UniversalInput.Backends.Serial.Tests" />
+	</ItemGroup>
+</Project>

@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<Description>Контракты, модели устройств, события, возможности и ошибки UniversalInput.</Description>
+		<RootNamespace>UniversalInput.Abstractions</RootNamespace>
+	</PropertyGroup>
+</Project>

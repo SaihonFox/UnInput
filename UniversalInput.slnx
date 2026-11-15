@@ -1,0 +1,24 @@
+<Solution>
+	<Folder Name="/src/">
+		<Project Path="src/UniversalInput.Abstractions/UniversalInput.Abstractions.csproj" />
+		<Project Path="src/UniversalInput.Core/UniversalInput.Core.csproj" />
+		<Project Path="src/UniversalInput.Hosting/UniversalInput.Hosting.csproj" />
+		<Project Path="src/UniversalInput.Testing/UniversalInput.Testing.csproj" />
+		<Project Path="src/UniversalInput.Backends.Serial/UniversalInput.Backends.Serial.csproj" />
+	</Folder>
+	<Folder Name="/tests/">
+		<Project Path="tests/UniversalInput.Core.Tests/UniversalInput.Core.Tests.csproj" />
+		<Project Path="tests/UniversalInput.Hosting.Tests/UniversalInput.Hosting.Tests.csproj" />
+		<Project Path="tests/UniversalInput.Backends.Serial.Tests/UniversalInput.Backends.Serial.Tests.csproj" />
+	</Folder>
+	<Folder Name="/samples/">
+		<Project Path="samples/UniversalInput.Samples.ConsoleApp/UniversalInput.Samples.ConsoleApp.csproj" />
+	</Folder>
+	<Folder Name="/Solution Items/">
+		<File Path="Directory.Build.props" />
+		<File Path="Directory.Packages.props" />
+		<File Path="global.json" />
+		<File Path=".editorconfig" />
+		<File Path="LICENSE" />
+	</Folder>
+</Solution>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<Description>Mock backend, виртуальные устройства и вспомогательные средства для тестов UniversalInput.</Description>
+		<RootNamespace>UniversalInput.Testing</RootNamespace>
+	</PropertyGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\UniversalInput.Abstractions\UniversalInput.Abstractions.csproj" />
+		<ProjectReference Include="..\UniversalInput.Core\UniversalInput.Core.csproj" />
+	</ItemGroup>
+</Project>

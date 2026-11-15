@@ -1,0 +1,26 @@
+<Project>
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<LangVersion>latest</LangVersion>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Deterministic>true</Deterministic>
+		<InvariantGlobalization>true</InvariantGlobalization>
+		<Authors>Saihon</Authors>
+		<Copyright>Copyright (c) 2026 Saihon</Copyright>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+	</PropertyGroup>
+
+	<!-- Пространства имён Abstractions доступны во всех проектах решения. -->
+	<ItemGroup>
+		<Using Include="UniversalInput.Abstractions.Devices" />
+		<Using Include="UniversalInput.Abstractions.Operations" />
+		<Using Include="UniversalInput.Abstractions.Events" />
+		<Using Include="UniversalInput.Abstractions.Events.Views" />
+		<Using Include="UniversalInput.Abstractions.Backends" />
+		<Using Include="UniversalInput.Abstractions.Features" />
+		<Using Include="UniversalInput.Abstractions.Errors" />
+		<Using Include="UniversalInput.Abstractions.Hub" />
+	</ItemGroup>
+</Project>
