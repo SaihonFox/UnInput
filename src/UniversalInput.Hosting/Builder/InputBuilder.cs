@@ -24,6 +24,9 @@ internal sealed class InputBuilder : IInputBuilder
 		return this;
 	}
 
+	IInputBackendBuilder IInputBackendBuilder.AddBackend(Func<IServiceProvider, IInputBackend> factory, bool required) =>
+		AddBackend(factory, required);
+
 	public IInputBuilder Configure(Action<InputHubOptions> configure)
 	{
 		ArgumentNullException.ThrowIfNull(configure);

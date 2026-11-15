@@ -23,7 +23,7 @@ public class SerialBackendTests
 		var (hub, _) = Create("COM3", "COM4");
 		await using var owner = hub;
 
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		Assert.Equal<string>(["COM3", "COM4"], hub.Devices.Select(d => d.Name));
 		var device = hub.Devices[0];
@@ -51,7 +51,7 @@ public class SerialBackendTests
 		{
 			Kinds = [InputEventKind.DeviceConnected, InputEventKind.DeviceDisconnected],
 		});
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		ports.SetPorts("COM3", "COM5");
 		await Wait.UntilAsync(() => hub.Devices.Count == 2, description: "COM5 должен появиться");
@@ -72,7 +72,7 @@ public class SerialBackendTests
 	{
 		var (hub, ports) = Create("COM3");
 		await using var owner = hub;
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		var original = IdOf(hub, "COM3");
 
 		ports.SetPorts();
@@ -88,9 +88,9 @@ public class SerialBackendTests
 	{
 		var (hub, ports) = Create("COM3");
 		await using var owner = hub;
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
-		await using var channel = await hub.OpenRawAsync(IdOf(hub, "COM3"), RawAccessMode.ReadWrite);
+		await using var channel = await hub.OpenRawAsync(IdOf(hub, "COM3"), RawAccessMode.ReadWrite, TestContext.Current.CancellationToken);
 		var connection = ports.Connections["COM3"];
 		connection.Push(1, 2, 3);
 		var buffer = new byte[16];
@@ -108,9 +108,9 @@ public class SerialBackendTests
 	{
 		var (hub, _) = Create("COM3");
 		await using var owner = hub;
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
-		await using var channel = await hub.OpenRawAsync(IdOf(hub, "COM3"), RawAccessMode.Write);
+		await using var channel = await hub.OpenRawAsync(IdOf(hub, "COM3"), RawAccessMode.Write, TestContext.Current.CancellationToken);
 		var error = await Assert.ThrowsAsync<InputException>(
 			() => channel.ReadAsync(new byte[4], CancellationToken.None).AsTask());
 
@@ -122,8 +122,8 @@ public class SerialBackendTests
 	{
 		var (hub, ports) = Create("COM3");
 		await using var owner = hub;
-		await hub.StartAsync();
-		var channel = await hub.OpenRawAsync(IdOf(hub, "COM3"), RawAccessMode.Read);
+		await hub.StartAsync(TestContext.Current.CancellationToken);
+		var channel = await hub.OpenRawAsync(IdOf(hub, "COM3"), RawAccessMode.Read, TestContext.Current.CancellationToken);
 
 		var pending = channel.ReadAsync(new byte[8], CancellationToken.None).AsTask();
 		ports.SetPorts();
@@ -139,11 +139,11 @@ public class SerialBackendTests
 	{
 		var (hub, ports) = Create("COM3");
 		await using var owner = hub;
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		ports.OpenFailure = new UnauthorizedAccessException("Access denied");
 
 		var error = await Assert.ThrowsAsync<InputException>(
-			() => hub.OpenRawAsync(IdOf(hub, "COM3"), RawAccessMode.ReadWrite).AsTask());
+			() => hub.OpenRawAsync(IdOf(hub, "COM3"), RawAccessMode.ReadWrite, TestContext.Current.CancellationToken).AsTask());
 
 		var expected = OperatingSystem.IsWindows() ? InputErrorCode.DeviceBusy : InputErrorCode.PermissionDenied;
 		Assert.Equal(expected, error.Code);
@@ -156,14 +156,14 @@ public class SerialBackendTests
 	{
 		var (hub, ports) = Create("COM3");
 		await using var owner = hub;
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		var device = IdOf(hub, "COM3");
 		ports.OpenFailure = new IOException("порт исчез");
 
 		var error = await Assert.ThrowsAsync<InputException>(
-			() => hub.OpenRawAsync(device, RawAccessMode.Read).AsTask());
+			() => hub.OpenRawAsync(device, RawAccessMode.Read, TestContext.Current.CancellationToken).AsTask());
 		ports.OpenFailure = null;
-		await using var channel = await hub.OpenRawAsync(device, RawAccessMode.Read);
+		await using var channel = await hub.OpenRawAsync(device, RawAccessMode.Read, TestContext.Current.CancellationToken);
 
 		Assert.Equal(InputErrorCode.DeviceUnavailable, error.Code);
 		Assert.NotNull(channel);
@@ -176,7 +176,7 @@ public class SerialBackendTests
 		await using var owner = hub;
 		ports.FailListing(new PlatformNotSupportedException("нет поддержки"), times: int.MaxValue);
 
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		var status = Assert.Single(hub.Backends);
 		Assert.Equal(BackendState.Unavailable, status.State);
@@ -189,7 +189,7 @@ public class SerialBackendTests
 	{
 		var (hub, ports) = Create("COM3");
 		await using var owner = hub;
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		var original = IdOf(hub, "COM3");
 
 		ports.FailListing(new IOException("sysfs недоступен"));
@@ -205,11 +205,11 @@ public class SerialBackendTests
 	{
 		var (hub, ports) = Create("COM3");
 		await using var owner = hub;
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
-		await hub.StopAsync();
+		await hub.StopAsync(TestContext.Current.CancellationToken);
 		var callsAfterStop = ports.ListCalls;
-		await Task.Delay(150);
+		await Task.Delay(150, TestContext.Current.CancellationToken);
 
 		Assert.Equal(callsAfterStop, ports.ListCalls);
 		Assert.Empty(hub.Devices);

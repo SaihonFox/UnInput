@@ -18,7 +18,7 @@ public class InputHubEventTests
 		}
 
 		var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		return (hub, backend);
 	}
 
@@ -29,7 +29,7 @@ public class InputHubEventTests
 		backend.InitialDevices.Add(Keyboard());
 		await using var hub = TestInputHub.Create(backend);
 		await using var subscription = hub.Subscribe();
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		backend.Emit(InputEvent.KeyDown(backend.IdOf("kbd"), KeyCodes.A));
 		var events = await subscription.ReadEventsAsync(2);
@@ -118,7 +118,7 @@ public class InputHubEventTests
 		backend.InitialDevices.Add(
 			MockInputBackend.Describe("system", InputDeviceKind.SystemWide, InputCapabilities.Keys, DeviceOrigin.Aggregate));
 		await using var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		await using var subscription = hub.Subscribe(new SubscriptionOptions { Kinds = [InputEventKind.KeyPressed] });
 
 		backend.Emit(InputEvent.KeyDown(backend.IdOf("system"), 1));
@@ -135,7 +135,7 @@ public class InputHubEventTests
 		var second = new MockInputBackend("second");
 		second.InitialDevices.Add(Keyboard("b"));
 		await using var hub = TestInputHub.Create(first, second);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		await using var onlySecond = hub.Subscribe(new SubscriptionOptions
 		{
 			BackendIds = ["second"],
@@ -193,7 +193,7 @@ public class InputHubEventTests
 		var backend = new MockInputBackend();
 		backend.InitialDevices.Add(MockInputBackend.Describe("mouse", InputDeviceKind.Mouse, InputCapabilities.PointerMotion));
 		await using var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		var device = backend.IdOf("mouse");
 		await using var slow = hub.Subscribe(new SubscriptionOptions { Capacity = 4, Kinds = [InputEventKind.MouseMoved] });
 		await using var marker = hub.Subscribe(new SubscriptionOptions { Kinds = [InputEventKind.KeyPressed] });
@@ -241,16 +241,16 @@ public class InputHubEventTests
 			catch (OperationCanceledException)
 			{
 			}
-		});
+		}, TestContext.Current.CancellationToken);
 
 		// Подписка создаётся при начале перечисления, поэтому событие отправляем, пока читатель не получит его.
 		while (!reader.IsCompleted)
 		{
 			backend.Emit(InputEvent.KeyDown(device, KeyCodes.Q));
-			await Task.Delay(5);
+			await Task.Delay(5, TestContext.Current.CancellationToken);
 		}
 
-		await reader.WaitAsync(TimeSpan.FromSeconds(5));
+		await reader.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 		Assert.NotEmpty(received);
 		Assert.Equal(KeyCodes.Q, received[0].AsKey().Usage);
 	}

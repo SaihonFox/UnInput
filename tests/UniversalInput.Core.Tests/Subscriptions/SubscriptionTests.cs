@@ -137,7 +137,7 @@ public class SubscriptionTests
 		Assert.True(subscription.Reader.TryRead(out var second));
 		Assert.Equal<int>([1, 2], [first.Int0, second.Int0]);
 
-		await Assert.ThrowsAsync<InvalidOperationException>(() => subscription.Reader.ReadAsync().AsTask());
+		await Assert.ThrowsAsync<InvalidOperationException>(() => subscription.Reader.ReadAsync(TestContext.Current.CancellationToken).AsTask());
 		await Assert.ThrowsAsync<InvalidOperationException>(() => subscription.Reader.Completion);
 	}
 
@@ -213,12 +213,12 @@ public class SubscriptionTests
 	{
 		var subscription = Create();
 
-		var wait = subscription.Reader.WaitToReadAsync().AsTask();
+		var wait = subscription.Reader.WaitToReadAsync(TestContext.Current.CancellationToken).AsTask();
 		Assert.False(wait.IsCompleted);
 
 		subscription.Offer(Key(1), null);
 
-		Assert.True(await wait.WaitAsync(TimeSpan.FromSeconds(2)));
+		Assert.True(await wait.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
 	}
 
 	[Fact]
@@ -244,24 +244,24 @@ public class SubscriptionTests
 		subscription.Offer(Key(3), null);
 
 		List<int> received = [];
-		await foreach (var inputEvent in subscription.Reader.ReadAllAsync())
+		await foreach (var inputEvent in subscription.Reader.ReadAllAsync(TestContext.Current.CancellationToken))
 		{
 			received.Add(inputEvent.Int0);
 		}
 
 		Assert.Equal<int>([1, 2], received);
-		await subscription.Reader.Completion.WaitAsync(TimeSpan.FromSeconds(2));
+		await subscription.Reader.Completion.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 	}
 
 	[Fact]
 	public async Task Complete_WakesAPendingReader()
 	{
 		var subscription = Create();
-		var wait = subscription.Reader.WaitToReadAsync().AsTask();
+		var wait = subscription.Reader.WaitToReadAsync(TestContext.Current.CancellationToken).AsTask();
 
 		subscription.Complete();
 
-		Assert.False(await wait.WaitAsync(TimeSpan.FromSeconds(2)));
+		Assert.False(await wait.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
 	}
 
 	[Fact]
@@ -273,6 +273,6 @@ public class SubscriptionTests
 		await subscription.DisposeAsync();
 
 		Assert.Same(subscription, disposed);
-		await subscription.Reader.Completion.WaitAsync(TimeSpan.FromSeconds(2));
+		await subscription.Reader.Completion.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 	}
 }

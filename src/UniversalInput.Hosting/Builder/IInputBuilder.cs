@@ -5,9 +5,9 @@ namespace UniversalInput.Hosting.Builder;
 
 /// <summary>
 /// Построитель UniversalInput. Пакеты backend добавляют методы расширения вида
-/// <c>AddMyBackend(this IInputBuilder builder)</c>; Core о них ничего не знает.
+/// <c>AddMyBackend(this IInputBackendBuilder builder)</c>; Core о них ничего не знает.
 /// </summary>
-public interface IInputBuilder
+public interface IInputBuilder : IInputBackendBuilder
 {
 	IServiceCollection Services { get; }
 
@@ -16,7 +16,7 @@ public interface IInputBuilder
 		where TBackend : class, IInputBackend;
 
 	/// <summary>Регистрирует backend, созданный фабрикой.</summary>
-	IInputBuilder AddBackend(Func<IServiceProvider, IInputBackend> factory, bool required = false);
+	new IInputBuilder AddBackend(Func<IServiceProvider, IInputBackend> factory, bool required = false);
 
 	IInputBuilder Configure(Action<InputHubOptions> configure);
 }

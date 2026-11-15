@@ -26,7 +26,7 @@ public class InputHubOperationTests
 	public async Task GetSupport_ReflectsTheFeaturesOfRunningBackends()
 	{
 		await using var hub = TestInputHub.Create(WithKeyboard());
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		Assert.True(hub.GetSupport(InputOperation.Enumerate).IsSupported);
 		Assert.True(hub.GetSupport(InputOperation.Observe).IsSupported);
@@ -53,7 +53,7 @@ public class InputHubOperationTests
 			},
 		});
 		await using var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		var pad = backend.IdOf("pad");
 
 		Assert.True(hub.GetSupport(InputOperation.Observe, pad).IsSupported);
@@ -66,7 +66,7 @@ public class InputHubOperationTests
 	public async Task GetSupport_ForAnUnknownDevice_IsUnsupported()
 	{
 		await using var hub = TestInputHub.Create(WithKeyboard());
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		Assert.Equal(SupportState.Unsupported, hub.GetSupport(InputOperation.Observe, new DeviceId(404)).State);
 	}
@@ -76,7 +76,7 @@ public class InputHubOperationTests
 	{
 		await using var hub = TestInputHub.Create(
 			Unavailable(InputErrorCode.PermissionDenied, "нужен доступ к /dev/uinput", "добавьте правило udev"));
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		var support = hub.GetSupport(InputOperation.Emulate);
 
@@ -91,7 +91,7 @@ public class InputHubOperationTests
 		await using var hub = TestInputHub.Create(
 			Unavailable(InputErrorCode.PermissionDenied, "нет прав", "выдайте права"),
 			WithKeyboard());
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		Assert.True(hub.GetSupport(InputOperation.Emulate).IsSupported);
 	}
@@ -100,7 +100,7 @@ public class InputHubOperationTests
 	public async Task GetSupport_WithoutBackends_IsUnsupported()
 	{
 		await using var hub = TestInputHub.Create();
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		Assert.Equal(SupportState.Unsupported, hub.GetSupport(InputOperation.Observe).State);
 	}
@@ -112,9 +112,9 @@ public class InputHubOperationTests
 	{
 		var backend = WithKeyboard();
 		await using var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
-		await hub.EmulateAsync(InputEvent.KeyDown(DeviceId.None, KeyCodes.A));
+		await hub.EmulateAsync(InputEvent.KeyDown(DeviceId.None, KeyCodes.A), TestContext.Current.CancellationToken);
 
 		var emulated = Assert.Single(backend.Emulated);
 		Assert.Equal(KeyCodes.A, emulated.AsKey().Usage);
@@ -127,9 +127,9 @@ public class InputHubOperationTests
 		var first = new MockInputBackend("first");
 		var second = WithKeyboard("second");
 		await using var hub = TestInputHub.Create(first, second);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
-		await hub.EmulateAsync(InputEvent.KeyDown(second.IdOf("kbd"), KeyCodes.B));
+		await hub.EmulateAsync(InputEvent.KeyDown(second.IdOf("kbd"), KeyCodes.B), TestContext.Current.CancellationToken);
 
 		Assert.Empty(first.Emulated);
 		Assert.Single(second.Emulated);
@@ -141,10 +141,10 @@ public class InputHubOperationTests
 		var backend = WithKeyboard();
 		backend.EmulationEnabled = false;
 		await using var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		var error = await Assert.ThrowsAsync<InputException>(
-			() => hub.EmulateAsync(InputEvent.KeyDown(DeviceId.None, 1)).AsTask());
+			() => hub.EmulateAsync(InputEvent.KeyDown(DeviceId.None, 1), TestContext.Current.CancellationToken).AsTask());
 
 		Assert.Equal(InputErrorCode.UnsupportedOperation, error.Code);
 		Assert.Empty(backend.Emulated);
@@ -155,10 +155,10 @@ public class InputHubOperationTests
 	{
 		await using var hub = TestInputHub.Create(
 			Unavailable(InputErrorCode.PermissionDenied, "нужны права Accessibility", "включите в настройках macOS"));
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		var error = await Assert.ThrowsAsync<InputException>(
-			() => hub.EmulateAsync(InputEvent.KeyDown(DeviceId.None, 1)).AsTask());
+			() => hub.EmulateAsync(InputEvent.KeyDown(DeviceId.None, 1), TestContext.Current.CancellationToken).AsTask());
 
 		Assert.Equal(InputErrorCode.PermissionDenied, error.Code);
 		Assert.Equal("включите в настройках macOS", error.Remediation);
@@ -169,10 +169,10 @@ public class InputHubOperationTests
 	{
 		await using var hub = TestInputHub.Create(
 			Unavailable(InputErrorCode.PlatformRestriction, "Wayland не даёт абсолютные координаты", "используйте X11"));
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		var error = await Assert.ThrowsAsync<InputException>(
-			() => hub.EmulateAsync(InputEvent.MouseMove(DeviceId.None, 1, 1, absolute: true)).AsTask());
+			() => hub.EmulateAsync(InputEvent.MouseMove(DeviceId.None, 1, 1, absolute: true), TestContext.Current.CancellationToken).AsTask());
 
 		Assert.Equal(InputErrorCode.PlatformRestriction, error.Code);
 	}
@@ -181,10 +181,10 @@ public class InputHubOperationTests
 	public async Task Emulate_ForAMissingDevice_ThrowsDeviceUnavailable()
 	{
 		await using var hub = TestInputHub.Create(WithKeyboard());
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		var error = await Assert.ThrowsAsync<InputException>(
-			() => hub.EmulateAsync(InputEvent.KeyDown(new DeviceId(404), 1)).AsTask());
+			() => hub.EmulateAsync(InputEvent.KeyDown(new DeviceId(404), 1), TestContext.Current.CancellationToken).AsTask());
 
 		Assert.Equal(InputErrorCode.DeviceUnavailable, error.Code);
 	}
@@ -197,9 +197,9 @@ public class InputHubOperationTests
 		var options = TestInputHub.FastOptions();
 		options.BackendPriority = ["second", "first"];
 		await using var hub = TestInputHub.Create(options, first, second);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
-		await hub.EmulateAsync(InputEvent.KeyDown(DeviceId.None, 1));
+		await hub.EmulateAsync(InputEvent.KeyDown(DeviceId.None, 1), TestContext.Current.CancellationToken);
 
 		Assert.Empty(first.Emulated);
 		Assert.Single(second.Emulated);
@@ -211,9 +211,9 @@ public class InputHubOperationTests
 		var first = new MockInputBackend("first");
 		var second = new MockInputBackend("second");
 		await using var hub = TestInputHub.Create(first, second);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
-		await hub.EmulateAsync(InputEvent.KeyDown(DeviceId.None, 1));
+		await hub.EmulateAsync(InputEvent.KeyDown(DeviceId.None, 1), TestContext.Current.CancellationToken);
 
 		Assert.Single(first.Emulated);
 		Assert.Empty(second.Emulated);
@@ -223,7 +223,7 @@ public class InputHubOperationTests
 	public async Task Emulate_WithACancelledToken_Throws()
 	{
 		await using var hub = TestInputHub.Create(WithKeyboard());
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		using var cts = new CancellationTokenSource();
 		await cts.CancelAsync();
 
@@ -238,10 +238,10 @@ public class InputHubOperationTests
 	{
 		var backend = WithKeyboard();
 		await using var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		var device = backend.IdOf("kbd");
 
-		await using var channel = await hub.OpenRawAsync(device, RawAccessMode.ReadWrite);
+		await using var channel = await hub.OpenRawAsync(device, RawAccessMode.ReadWrite, TestContext.Current.CancellationToken);
 		backend.GetChannel(device)!.Push(1, 2, 3);
 		var buffer = new byte[8];
 		var length = await channel.ReadAsync(buffer, CancellationToken.None);
@@ -259,14 +259,14 @@ public class InputHubOperationTests
 	{
 		var backend = WithKeyboard();
 		await using var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		var device = backend.IdOf("kbd");
 
-		var first = await hub.OpenRawAsync(device, RawAccessMode.Read);
+		var first = await hub.OpenRawAsync(device, RawAccessMode.Read, TestContext.Current.CancellationToken);
 		var busy = await Assert.ThrowsAsync<InputException>(
-			() => hub.OpenRawAsync(device, RawAccessMode.Read).AsTask());
+			() => hub.OpenRawAsync(device, RawAccessMode.Read, TestContext.Current.CancellationToken).AsTask());
 		await first.DisposeAsync();
-		await using var second = await hub.OpenRawAsync(device, RawAccessMode.Read);
+		await using var second = await hub.OpenRawAsync(device, RawAccessMode.Read, TestContext.Current.CancellationToken);
 
 		Assert.Equal(InputErrorCode.DeviceBusy, busy.Code);
 		Assert.NotNull(second);
@@ -277,9 +277,9 @@ public class InputHubOperationTests
 	{
 		var backend = WithKeyboard();
 		await using var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		var device = backend.IdOf("kbd");
-		var channel = await hub.OpenRawAsync(device, RawAccessMode.Read);
+		var channel = await hub.OpenRawAsync(device, RawAccessMode.Read, TestContext.Current.CancellationToken);
 
 		var pending = channel.ReadAsync(new byte[8], CancellationToken.None).AsTask();
 		backend.Disconnect(device);
@@ -299,10 +299,10 @@ public class InputHubOperationTests
 		var backend = WithKeyboard();
 		backend.RawAccessEnabled = false;
 		await using var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		var error = await Assert.ThrowsAsync<InputException>(
-			() => hub.OpenRawAsync(backend.IdOf("kbd"), RawAccessMode.Read).AsTask());
+			() => hub.OpenRawAsync(backend.IdOf("kbd"), RawAccessMode.Read, TestContext.Current.CancellationToken).AsTask());
 
 		Assert.Equal(InputErrorCode.UnsupportedOperation, error.Code);
 	}
@@ -311,10 +311,10 @@ public class InputHubOperationTests
 	public async Task OpenRaw_ForAMissingDevice_ThrowsDeviceUnavailable()
 	{
 		await using var hub = TestInputHub.Create(WithKeyboard());
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		var error = await Assert.ThrowsAsync<InputException>(
-			() => hub.OpenRawAsync(new DeviceId(404), RawAccessMode.Read).AsTask());
+			() => hub.OpenRawAsync(new DeviceId(404), RawAccessMode.Read, TestContext.Current.CancellationToken).AsTask());
 
 		Assert.Equal(InputErrorCode.DeviceUnavailable, error.Code);
 	}
@@ -323,9 +323,9 @@ public class InputHubOperationTests
 	public async Task OpenRaw_WithoutADevice_ThrowsArgumentException()
 	{
 		await using var hub = TestInputHub.Create(WithKeyboard());
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		await Assert.ThrowsAsync<ArgumentException>(
-			() => hub.OpenRawAsync(DeviceId.None, RawAccessMode.Read).AsTask());
+			() => hub.OpenRawAsync(DeviceId.None, RawAccessMode.Read, TestContext.Current.CancellationToken).AsTask());
 	}
 }

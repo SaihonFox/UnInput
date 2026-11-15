@@ -44,7 +44,7 @@ public class AddUniversalInputTests
 
 		Assert.Single(provider.GetServices<IHostedService>());
 		var hub = provider.GetRequiredService<IInputHub>();
-		await provider.GetRequiredService<InputHub>().StartAsync();
+		await provider.GetRequiredService<InputHub>().StartAsync(TestContext.Current.CancellationToken);
 		Assert.Equal<string>(["a", "b"], hub.Backends.Select(b => b.Id));
 	}
 
@@ -58,7 +58,7 @@ public class AddUniversalInputTests
 		var backend = provider.GetRequiredService<MockInputBackend>();
 
 		var hub = provider.GetRequiredService<InputHub>();
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		Assert.Equal("mock", Assert.Single(hub.Backends).Id);
 		Assert.Equal(1, backend.StartCount);
@@ -93,13 +93,13 @@ public class AddUniversalInputTests
 		builder.Services.AddUniversalInput(input => input.AddMock(backend));
 		using var host = builder.Build();
 
-		await host.StartAsync();
+		await host.StartAsync(TestContext.Current.CancellationToken);
 		var hub = host.Services.GetRequiredService<IInputHub>();
 
 		Assert.Equal(BackendState.Running, Assert.Single(hub.Backends).State);
 		Assert.Equal("kbd", Assert.Single(hub.Devices).Name);
 
-		await host.StopAsync();
+		await host.StopAsync(TestContext.Current.CancellationToken);
 
 		Assert.Equal(BackendState.Stopped, Assert.Single(hub.Backends).State);
 		Assert.Equal(1, backend.StopCount);
@@ -119,7 +119,7 @@ public class AddUniversalInputTests
 			.Configure(o => o.FailFast = true));
 		using var host = builder.Build();
 
-		var error = await Assert.ThrowsAnyAsync<Exception>(() => host.StartAsync());
+		var error = await Assert.ThrowsAnyAsync<Exception>(() => host.StartAsync(TestContext.Current.CancellationToken));
 
 		var inputError = error as InputException
 			?? (error as AggregateException)?.InnerExceptions.OfType<InputException>().FirstOrDefault();
@@ -139,11 +139,11 @@ public class AddUniversalInputTests
 		builder.Services.AddUniversalInput(input => input.AddMock(backend));
 		using var host = builder.Build();
 
-		await host.StartAsync();
+		await host.StartAsync(TestContext.Current.CancellationToken);
 
 		var hub = host.Services.GetRequiredService<IInputHub>();
 		Assert.Equal(BackendState.Unavailable, Assert.Single(hub.Backends).State);
-		await host.StopAsync();
+		await host.StopAsync(TestContext.Current.CancellationToken);
 	}
 }
 

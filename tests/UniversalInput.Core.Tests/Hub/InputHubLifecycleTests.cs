@@ -22,7 +22,7 @@ public class InputHubLifecycleTests
 		var backend = WithKeyboard();
 		await using var hub = TestInputHub.Create(backend);
 
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		var status = Assert.Single(hub.Backends);
 		Assert.Equal(BackendState.Running, status.State);
@@ -36,9 +36,9 @@ public class InputHubLifecycleTests
 	public async Task Start_Twice_Throws()
 	{
 		await using var hub = TestInputHub.Create(WithKeyboard());
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
-		await Assert.ThrowsAsync<InvalidOperationException>(() => hub.StartAsync());
+		await Assert.ThrowsAsync<InvalidOperationException>(() => hub.StartAsync(TestContext.Current.CancellationToken));
 	}
 
 	[Fact]
@@ -58,7 +58,7 @@ public class InputHubLifecycleTests
 		var good = WithKeyboard("good");
 		await using var hub = TestInputHub.Create(bad, good);
 
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		var badStatus = StatusOf(hub, 0);
 		Assert.Equal(BackendState.Unavailable, badStatus.State);
@@ -75,7 +75,7 @@ public class InputHubLifecycleTests
 		var backend = new MockInputBackend { ProbeException = new DllNotFoundException("native.dll") };
 		await using var hub = TestInputHub.Create(backend);
 
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		var status = StatusOf(hub);
 		Assert.Equal(BackendState.Unavailable, status.State);
@@ -94,7 +94,7 @@ public class InputHubLifecycleTests
 		options.FailFast = true;
 		await using var hub = new InputHub([new BackendRegistration(backend, Required: true)], options);
 
-		var error = await Assert.ThrowsAsync<InputException>(() => hub.StartAsync());
+		var error = await Assert.ThrowsAsync<InputException>(() => hub.StartAsync(TestContext.Current.CancellationToken));
 
 		Assert.Equal(InputErrorCode.PlatformRestriction, error.Code);
 		Assert.Equal("ничего нельзя сделать", error.Remediation);
@@ -109,7 +109,7 @@ public class InputHubLifecycleTests
 		};
 		await using var hub = new InputHub([new BackendRegistration(backend, Required: true)], TestInputHub.FastOptions());
 
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		Assert.Equal(BackendState.Unavailable, StatusOf(hub).State);
 	}
@@ -121,7 +121,7 @@ public class InputHubLifecycleTests
 		backend.StartFailuresRemaining = 2;
 		await using var hub = TestInputHub.Create(backend);
 
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		await Wait.UntilAsync(() => StatusOf(hub).State == BackendState.Running, description: "backend должен перезапуститься");
 
 		Assert.Equal(3, backend.StartCount);
@@ -137,8 +137,8 @@ public class InputHubLifecycleTests
 		backend.StartFailure = new InputException(InputErrorCode.PlatformRestriction, "запрещено ОС");
 		await using var hub = TestInputHub.Create(backend);
 
-		await hub.StartAsync();
-		await Task.Delay(200);
+		await hub.StartAsync(TestContext.Current.CancellationToken);
+		await Task.Delay(200, TestContext.Current.CancellationToken);
 
 		var status = StatusOf(hub);
 		Assert.Equal(BackendState.Unavailable, status.State);
@@ -152,7 +152,7 @@ public class InputHubLifecycleTests
 		var backend = WithKeyboard();
 		await using var hub = TestInputHub.Create(backend);
 		await using var subscription = hub.Subscribe();
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 		var originalId = backend.IdOf("kbd");
 
 		backend.ReportFault(InputException.BackendFault("сбой потока опроса"), recoverable: true);
@@ -176,12 +176,12 @@ public class InputHubLifecycleTests
 	{
 		var backend = WithKeyboard();
 		await using var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		backend.ReportFault(InputException.BackendFault("необратимый сбой"), recoverable: false);
 
 		await Wait.UntilAsync(() => StatusOf(hub).State == BackendState.Stopped, description: "backend должен остановиться");
-		await Task.Delay(150);
+		await Task.Delay(150, TestContext.Current.CancellationToken);
 
 		var status = StatusOf(hub);
 		Assert.Equal(InputErrorCode.BackendFault, status.ErrorCode);
@@ -196,9 +196,9 @@ public class InputHubLifecycleTests
 		var backend = WithKeyboard();
 		backend.HangOnStop = true;
 		await using var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
-		await hub.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+		await hub.StopAsync(TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
 		Assert.Equal(BackendState.Stopped, StatusOf(hub).State);
 		Assert.Equal(1, backend.StopCount);
@@ -211,12 +211,12 @@ public class InputHubLifecycleTests
 		var backend = WithKeyboard();
 		await using var hub = TestInputHub.Create(backend);
 		var subscription = hub.Subscribe();
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
-		await hub.StopAsync();
+		await hub.StopAsync(TestContext.Current.CancellationToken);
 
 		List<InputEventKind> kinds = [];
-		await foreach (var inputEvent in subscription.Reader.ReadAllAsync())
+		await foreach (var inputEvent in subscription.Reader.ReadAllAsync(TestContext.Current.CancellationToken))
 		{
 			kinds.Add(inputEvent.Kind);
 		}
@@ -229,7 +229,7 @@ public class InputHubLifecycleTests
 	{
 		var backend = WithKeyboard();
 		var hub = TestInputHub.Create(backend);
-		await hub.StartAsync();
+		await hub.StartAsync(TestContext.Current.CancellationToken);
 
 		await hub.DisposeAsync();
 		await hub.DisposeAsync();

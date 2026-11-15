@@ -26,7 +26,7 @@ public class EventDispatcherTests
 	private static async Task<List<InputEvent>> ReadAll(IInputSubscription subscription)
 	{
 		List<InputEvent> events = [];
-		await foreach (var inputEvent in subscription.Reader.ReadAllAsync())
+		await foreach (var inputEvent in subscription.Reader.ReadAllAsync(TestContext.Current.CancellationToken))
 		{
 			events.Add(inputEvent);
 		}

@@ -18,6 +18,15 @@
 
 Правила зависимостей: Abstractions — ни на что; Core — только на Abstractions; backend — только на Abstractions, никогда на Core. Нарушение ломает тест `ProjectReferenceTests`.
 
+## Подключение
+
+```csharp
+services.AddUniversalInput(input => input
+	.AddSerial(options => options.PollInterval = TimeSpan.FromSeconds(1)));
+```
+
+Пакет backend зависит только от `UniversalInput.Abstractions`: метод расширения (`AddSerial`) вешается на `IInputBackendBuilder`, который реализует построитель из Hosting.
+
 ## Сборка и проверка
 
 ```
@@ -38,4 +47,3 @@ dotnet run --project samples/UniversalInput.Samples.ConsoleApp
 - Арбитраж между backend: сопоставление дескрипторов одного физического устройства и подавление дублей агрегатных событий (`OriginFilter`). Сейчас исполнитель операции выбирается по порядку приоритетов, а ключ устройства должен быть уникален.
 - `SubscriptionOptions.MaxContinuousRate`.
 - Backend GlobalHook, Hid, Sdl, Native, Bluetooth, Android, iOS и сетевая часть.
-- Метод расширения `AddSerial` на построителе: `IInputBuilder` сейчас лежит в Hosting, а backend по правилам зависимостей не может на него ссылаться. Подключение пока — `input.AddBackend(_ => new SerialBackend())`.
