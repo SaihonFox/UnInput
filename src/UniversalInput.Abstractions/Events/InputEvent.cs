@@ -133,6 +133,7 @@ public readonly record struct InputEvent
 			V1 = y,
 		};
 
+	/// <summary>Колесо: <paramref name="deltaY"/> &gt; 0 — прокрутка вверх, <paramref name="deltaX"/> &gt; 0 — вправо. Единицы задаёт backend и описывает в своей документации.</summary>
 	public static InputEvent Wheel(DeviceId device, float deltaX, float deltaY, long timestamp = 0) => new()
 	{
 		Kind = InputEventKind.MouseWheel,

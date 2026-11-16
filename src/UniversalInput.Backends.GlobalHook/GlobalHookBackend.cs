@@ -1,0 +1,203 @@
+using System.Diagnostics.CodeAnalysis;
+using UniversalInput.Backends.GlobalHook.Probe;
+using UniversalInput.Backends.GlobalHook.Sources;
+
+namespace UniversalInput.Backends.GlobalHook;
+
+/// <summary>
+/// Наблюдение за системным вводом (клавиатура и мышь) через глобальный хук ОС. Весь ввод системы — одно агрегатное
+/// устройство вида <see cref="InputDeviceKind.SystemWide"/>: хук не говорит, какая именно физическая клавиатура или мышь
+/// создала событие. Поэтому у событий стоит флаг <see cref="InputEventFlags.Aggregate"/>, а Core прячет их как дубли,
+/// пока ту же категорию отдельно наблюдает backend устройств.
+/// <para>
+/// Пока умеет только Observe. Эмуляция и перехват (на Windows и macOS) в SharpHook есть, но здесь ещё не подключены,
+/// поэтому честно объявлены неподдерживаемыми. Клавиши без кода на странице клавиатуры HID не передаются (см. <c>KeyMap</c>).
+/// </para>
+/// </summary>
+public sealed class GlobalHookBackend : IInputBackend
+{
+	public const string BackendId = "globalhook";
+
+	private readonly Func<IHookSource> _createSource;
+	private readonly HashSet<int> _pressed = [];
+	private IHookSource? _source;
+	private IBackendContext? _context;
+	private DeviceId _device;
+
+	public GlobalHookBackend()
+		: this(() => new SharpHookSource())
+	{
+	}
+
+	/// <summary>Источник создаётся заново при каждом запуске: хук нельзя перезапустить после освобождения.</summary>
+	internal GlobalHookBackend(Func<IHookSource> createSource)
+	{
+		ArgumentNullException.ThrowIfNull(createSource);
+		_createSource = createSource;
+	}
+
+	public string Id => BackendId;
+
+	public ValueTask<BackendProbe> ProbeAsync(CancellationToken cancellationToken) =>
+		new(GlobalHookProbe.ForCurrentSystem());
+
+	public async ValueTask StartAsync(IBackendContext context, CancellationToken cancellationToken)
+	{
+		ArgumentNullException.ThrowIfNull(context);
+
+		// Повторный запуск без остановки (перезапуск после сбоя): сначала освобождаем прежний хук.
+		await ReleaseAsync().ConfigureAwait(false);
+
+		var source = _createSource();
+		_context = context;
+		_device = context.AddDevice(Describe());
+		lock (_pressed)
+		{
+			_pressed.Clear();
+		}
+
+		source.Signal += OnSignal;
+		source.Failed += OnFailed;
+		_source = source;
+
+		try
+		{
+			await source.StartAsync(cancellationToken).ConfigureAwait(false);
+		}
+		catch (OperationCanceledException)
+		{
+			await ReleaseAsync().ConfigureAwait(false);
+			throw;
+		}
+		catch (Exception ex)
+		{
+			await ReleaseAsync().ConfigureAwait(false);
+			throw HookFailure.ToException(ex);
+		}
+	}
+
+	public async ValueTask StopAsync(CancellationToken cancellationToken) =>
+		await ReleaseAsync().ConfigureAwait(false);
+
+	public ValueTask DisposeAsync() => ReleaseAsync();
+
+	public bool TryGetFeature<TFeature>([NotNullWhen(true)] out TFeature? feature)
+		where TFeature : class, IBackendFeature
+	{
+		feature = null;
+		return false;
+	}
+
+	private static DeviceDescriptor Describe() => new()
+	{
+		Key = new DeviceKey("globalhook:system"),
+		Name = "Системный ввод (глобальный хук)",
+		Kind = InputDeviceKind.SystemWide,
+		Origin = DeviceOrigin.Aggregate,
+		Capabilities = InputCapabilities.Keys
+			| InputCapabilities.PointerPosition
+			| InputCapabilities.PointerButtons
+			| InputCapabilities.Wheel,
+		Operations = new Dictionary<InputOperation, OperationSupport>
+		{
+			[InputOperation.Enumerate] = OperationSupport.Supported,
+			[InputOperation.Observe] = OperationSupport.Supported,
+			[InputOperation.Emulate] = OperationSupport.Unsupported("Эмуляция через SharpHook в этом backend пока не подключена."),
+			[InputOperation.Intercept] = OperationSupport.Unsupported("Перехват с подавлением событий в этом backend пока не подключён."),
+			[InputOperation.DirectAccess] = OperationSupport.Unsupported("Хук не даёт доступа к сырым данным устройства."),
+		},
+		Properties = new Dictionary<string, string> { ["library"] = "SharpHook" },
+	};
+
+	/// <summary>Освобождает хук и убирает устройство. Идемпотентна: вызывается и при остановке, и после неудачного запуска.</summary>
+	private async ValueTask ReleaseAsync()
+	{
+		var source = Interlocked.Exchange(ref _source, null);
+		if (source is null)
+		{
+			return;
+		}
+
+		source.Signal -= OnSignal;
+		source.Failed -= OnFailed;
+
+		var device = _device;
+		_device = default;
+		if (!device.IsNone)
+		{
+			_context?.RemoveDevice(device);
+		}
+
+		await source.DisposeAsync().ConfigureAwait(false);
+	}
+
+	private void OnFailed(Exception error)
+	{
+		if (Volatile.Read(ref _source) is null)
+		{
+			return;
+		}
+
+		_context?.ReportFault(InputException.BackendFault("Глобальный хук остановился: " + error.Message, error), recoverable: true);
+	}
+
+	private void OnSignal(HookSignal signal)
+	{
+		var context = _context;
+		if (context is null || Volatile.Read(ref _source) is null)
+		{
+			return;
+		}
+
+		var device = _device;
+		InputEvent inputEvent;
+		switch (signal.Kind)
+		{
+			case HookSignalKind.KeyDown:
+				bool repeat;
+				lock (_pressed)
+				{
+					// Повторные KeyPressed без KeyReleased — автоповтор клавиши.
+					repeat = !_pressed.Add(signal.Usage);
+				}
+
+				inputEvent = InputEvent.KeyDown(device, signal.Usage, repeat: repeat);
+				break;
+
+			case HookSignalKind.KeyUp:
+				lock (_pressed)
+				{
+					_pressed.Remove(signal.Usage);
+				}
+
+				inputEvent = InputEvent.KeyUp(device, signal.Usage);
+				break;
+
+			case HookSignalKind.MouseMove:
+				inputEvent = InputEvent.MouseMove(device, signal.X, signal.Y, absolute: true);
+				break;
+
+			case HookSignalKind.MouseDown:
+				inputEvent = InputEvent.MouseDown(device, (int)signal.Button, signal.X, signal.Y);
+				break;
+
+			case HookSignalKind.MouseUp:
+				inputEvent = InputEvent.MouseUp(device, (int)signal.Button, signal.X, signal.Y);
+				break;
+
+			case HookSignalKind.Wheel:
+				inputEvent = InputEvent.Wheel(device, signal.X, signal.Y);
+				break;
+
+			default:
+				return;
+		}
+
+		inputEvent = inputEvent with
+		{
+			Modifiers = signal.Modifiers,
+			Flags = inputEvent.Flags | (signal.Simulated ? InputEventFlags.Simulated : InputEventFlags.None),
+		};
+		context.TryWrite(in inputEvent);
+	}
+}

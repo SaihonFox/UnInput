@@ -13,6 +13,7 @@
 | `UniversalInput.Hosting` | `AddUniversalInput`, фоновая служба, настройки |
 | `UniversalInput.Testing` | `MockInputBackend`, вспомогательные средства для тестов |
 | `UniversalInput.Backends.Serial` | Backend COM-портов (System.IO.Ports): обнаружение опросом, сырые байты через прямой доступ |
+| `UniversalInput.Backends.GlobalHook` | Backend системного ввода через глобальный хук ([SharpHook](https://github.com/TolikPylypchuk/SharpHook)): клавиатура и мышь всей системы, только наблюдение |
 | `tests/*` | Тесты xUnit v3 (включая проверку правил зависимостей по файлам проектов) |
 | `samples/UniversalInput.Samples.ConsoleApp` | Консольный пример на mock backend |
 
@@ -22,7 +23,8 @@
 
 ```csharp
 services.AddUniversalInput(input => input
-	.AddSerial(options => options.PollInterval = TimeSpan.FromSeconds(1)));
+	.AddSerial(options => options.PollInterval = TimeSpan.FromSeconds(1))
+	.AddGlobalHook());
 ```
 
 Пакет backend зависит только от `UniversalInput.Abstractions`: метод расширения (`AddSerial`) вешается на `IInputBackendBuilder`, который реализует построитель из Hosting.
@@ -58,6 +60,18 @@ dotnet run --project samples/UniversalInput.Samples.ConsoleApp
 
 Отличие от первой версии документа: предел действует на каждый поток отдельно (устройство + вид события + ось, касание или датчик), а не на устройство целиком: события разных осей нельзя склеить в одно.
 
+## Backend GlobalHook
+
+Один агрегатный device `globalhook:system` (вид `SystemWide`, источник `Aggregate`) на весь системный ввод: хук не сообщает, какая физическая клавиатура или мышь создала событие. Поэтому события несут флаг `Aggregate`, и Core прячет их как дубли, пока ту же категорию отдельно наблюдает другой backend.
+
+- Поддержано только `Observe`. Эмуляция и перехват в SharpHook есть (подавление событий — только Windows и macOS), но здесь не подключены и честно объявлены неподдерживаемыми.
+- Клавиши передаются кодом страницы клавиатуры USB HID. Клавиши без такого кода (мультимедиа, браузерные, часть японских и IME) не доставляются; список зашит в `KeyMap.Unmapped`, тест требует, чтобы каждый код SharpHook был либо переведён, либо в этом списке.
+- Мышь: только абсолютные координаты. Колесо: `DeltaY` > 0 — вверх, `DeltaX` > 0 — вправо; единицы берутся из ОС как есть и между ОС могут отличаться.
+- События, созданные программами (в том числе самим приложением), получают флаг `Simulated`; автоповтор клавиши — `Repeat`.
+- macOS: нужно разрешение «Универсальный доступ»; без него запуск завершается `PermissionDenied` с инструкцией. Linux: нужен X11 или Wayland; на Wayland нет абсолютных координат и повышены требования к правам (udev). Ошибки запуска не скрываются, а попадают в статус backend.
+- Поддерживаемые SharpHook платформы: Windows (x64, x86, arm64), macOS (x64, arm64), Linux (x64, arm64, arm32). Мобильные платформы и браузер отклоняются проверкой.
+- **Не проверено ни на одной реальной ОС**: тесты работают с подменённым источником хука; логику SharpHook я проверить не мог.
+
 ## Ещё не сделано
 
-- Backend GlobalHook, Hid, Sdl, Native, Bluetooth, Android, iOS и сетевая часть.
+- Backend Hid, Sdl, Native, Bluetooth, Android, iOS и сетевая часть; эмуляция и перехват для GlobalHook.

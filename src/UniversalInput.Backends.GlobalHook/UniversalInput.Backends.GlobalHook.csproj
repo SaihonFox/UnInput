@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<Description>Backend UniversalInput для глобального перехвата клавиатуры и мыши (SharpHook): наблюдение за системным вводом.</Description>
+		<RootNamespace>UniversalInput.Backends.GlobalHook</RootNamespace>
+	</PropertyGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\UniversalInput.Abstractions\UniversalInput.Abstractions.csproj" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="SharpHook" />
+	</ItemGroup>
+	<ItemGroup>
+		<InternalsVisibleTo Include="UniversalInput.Backends.GlobalHook.Tests" />
+	</ItemGroup>
+</Project>
