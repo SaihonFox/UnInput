@@ -23,13 +23,15 @@ public class GlobalHookBackendTests
 	private static (InputHub Hub, List<FakeHookSource> Sources) Create(Action<FakeHookSource>? configure = null)
 	{
 		List<FakeHookSource> sources = [];
-		var backend = new GlobalHookBackend(() =>
-		{
-			var source = new FakeHookSource();
-			configure?.Invoke(source);
-			sources.Add(source);
-			return source;
-		});
+		var backend = new GlobalHookBackend(
+			() =>
+			{
+				var source = new FakeHookSource();
+				configure?.Invoke(source);
+				sources.Add(source);
+				return source;
+			},
+			() => BackendProbe.Available);
 
 		return (TestInputHub.Create(backend), sources);
 	}
@@ -183,12 +185,14 @@ public class GlobalHookBackendTests
 	public async Task AggregateKeys_AreHidden_WhileAPhysicalKeyboardIsObserved()
 	{
 		List<FakeHookSource> sources = [];
-		var hook = new GlobalHookBackend(() =>
-		{
-			var source = new FakeHookSource();
-			sources.Add(source);
-			return source;
-		});
+		var hook = new GlobalHookBackend(
+			() =>
+			{
+				var source = new FakeHookSource();
+				sources.Add(source);
+				return source;
+			},
+			() => BackendProbe.Available);
 		var native = new UniversalInput.Testing.Mock.MockInputBackend("native");
 		await using var hub = TestInputHub.Create(hook, native);
 		await using var plain = hub.Subscribe(new SubscriptionOptions { Kinds = [InputEventKind.KeyPressed] });
@@ -205,5 +209,29 @@ public class GlobalHookBackendTests
 		Assert.Equal(KeyCodes.B, Assert.Single(first).AsKey().Usage);
 		Assert.Equal(KeyCodes.C, Assert.Single(second).AsKey().Usage);
 		Assert.False(plain.Reader.TryRead(out _));
+	}
+
+	[Fact]
+	public async Task AnUnavailablePlatform_KeepsTheBackendOutOfRunning_WithoutCreatingAHook()
+	{
+		List<FakeHookSource> sources = [];
+		var backend = new GlobalHookBackend(
+			() =>
+			{
+				var source = new FakeHookSource();
+				sources.Add(source);
+				return source;
+			},
+			() => BackendProbe.Unavailable(InputErrorCode.BackendUnavailable, "нет графического сеанса", "запустите в сеансе"));
+		await using var hub = TestInputHub.Create(backend);
+
+		await hub.StartAsync(TestContext.Current.CancellationToken);
+
+		var status = Assert.Single(hub.Backends);
+		Assert.Equal(BackendState.Unavailable, status.State);
+		Assert.Equal(InputErrorCode.BackendUnavailable, status.ErrorCode);
+		Assert.Equal("запустите в сеансе", status.Remediation);
+		Assert.Empty(sources);
+		Assert.Empty(hub.Devices);
 	}
 }

@@ -19,27 +19,32 @@ public sealed class GlobalHookBackend : IInputBackend
 	public const string BackendId = "globalhook";
 
 	private readonly Func<IHookSource> _createSource;
+	private readonly Func<BackendProbe> _probe;
 	private readonly HashSet<int> _pressed = [];
 	private IHookSource? _source;
 	private IBackendContext? _context;
 	private DeviceId _device;
 
 	public GlobalHookBackend()
-		: this(() => new SharpHookSource())
+		: this(() => new SharpHookSource(), GlobalHookProbe.ForCurrentSystem)
 	{
 	}
 
-	/// <summary>Источник создаётся заново при каждом запуске: хук нельзя перезапустить после освобождения.</summary>
-	internal GlobalHookBackend(Func<IHookSource> createSource)
+	/// <summary>
+	/// Источник создаётся заново при каждом запуске: хук нельзя перезапустить после освобождения.
+	/// Проверка платформы передаётся отдельно, чтобы тесты не зависели от ОС и графического сеанса, на которых идут.
+	/// </summary>
+	internal GlobalHookBackend(Func<IHookSource> createSource, Func<BackendProbe> probe)
 	{
 		ArgumentNullException.ThrowIfNull(createSource);
+		ArgumentNullException.ThrowIfNull(probe);
 		_createSource = createSource;
+		_probe = probe;
 	}
 
 	public string Id => BackendId;
 
-	public ValueTask<BackendProbe> ProbeAsync(CancellationToken cancellationToken) =>
-		new(GlobalHookProbe.ForCurrentSystem());
+	public ValueTask<BackendProbe> ProbeAsync(CancellationToken cancellationToken) => new(_probe());
 
 	public async ValueTask StartAsync(IBackendContext context, CancellationToken cancellationToken)
 	{

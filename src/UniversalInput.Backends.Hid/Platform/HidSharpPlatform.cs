@@ -50,7 +50,7 @@ internal sealed class HidSharpPlatform : IHidPlatform
 				Try(device.GetProductName),
 				Try(device.GetSerialNumber),
 				Try(device.GetMaxInputReportLength, 0),
-				Try(() => ReportDescriptorReader.ReadApplicationUsages(device.GetRawReportDescriptor()), []));
+				Try(() => ReportDescriptorReader.ReadApplicationUsages(device.GetRawReportDescriptor())) ?? []);
 		}
 		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
 		{
