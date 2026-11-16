@@ -5,27 +5,30 @@ namespace UniversalInput.Backends.GlobalHook.Tests.Probe;
 
 public class GlobalHookProbeTests
 {
+	// HookPlatform внутренний, а методы теста публичные, поэтому платформа передаётся именем.
+	private static HookPlatform Parse(string name) => Enum.Parse<HookPlatform>(name);
+
 	[Theory]
-	[InlineData(HookPlatform.Windows, Architecture.X64)]
-	[InlineData(HookPlatform.Windows, Architecture.X86)]
-	[InlineData(HookPlatform.Windows, Architecture.Arm64)]
-	[InlineData(HookPlatform.MacOS, Architecture.X64)]
-	[InlineData(HookPlatform.MacOS, Architecture.Arm64)]
-	[InlineData(HookPlatform.Linux, Architecture.X64)]
-	[InlineData(HookPlatform.Linux, Architecture.Arm)]
-	[InlineData(HookPlatform.Linux, Architecture.Arm64)]
-	public void SupportedCombinations_AreAvailable(HookPlatform platform, Architecture architecture)
+	[InlineData("Windows", Architecture.X64)]
+	[InlineData("Windows", Architecture.X86)]
+	[InlineData("Windows", Architecture.Arm64)]
+	[InlineData("MacOS", Architecture.X64)]
+	[InlineData("MacOS", Architecture.Arm64)]
+	[InlineData("Linux", Architecture.X64)]
+	[InlineData("Linux", Architecture.Arm)]
+	[InlineData("Linux", Architecture.Arm64)]
+	public void SupportedCombinations_AreAvailable(string platformName, Architecture architecture)
 	{
-		Assert.True(GlobalHookProbe.Evaluate(platform, architecture, linuxSessionPresent: true).IsAvailable);
+		Assert.True(GlobalHookProbe.Evaluate(Parse(platformName), architecture, linuxSessionPresent: true).IsAvailable);
 	}
 
 	[Theory]
-	[InlineData(HookPlatform.Windows, Architecture.Arm)]
-	[InlineData(HookPlatform.MacOS, Architecture.X86)]
-	[InlineData(HookPlatform.Linux, Architecture.X86)]
-	public void UnsupportedArchitectures_AreRestrictedByPlatform(HookPlatform platform, Architecture architecture)
+	[InlineData("Windows", Architecture.Arm)]
+	[InlineData("MacOS", Architecture.X86)]
+	[InlineData("Linux", Architecture.X86)]
+	public void UnsupportedArchitectures_AreRestrictedByPlatform(string platformName, Architecture architecture)
 	{
-		var probe = GlobalHookProbe.Evaluate(platform, architecture, linuxSessionPresent: true);
+		var probe = GlobalHookProbe.Evaluate(Parse(platformName), architecture, linuxSessionPresent: true);
 
 		Assert.False(probe.IsAvailable);
 		Assert.Equal(InputErrorCode.PlatformRestriction, probe.FailureCode);

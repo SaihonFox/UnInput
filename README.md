@@ -14,6 +14,7 @@
 | `UniversalInput.Testing` | `MockInputBackend`, вспомогательные средства для тестов |
 | `UniversalInput.Backends.Serial` | Backend COM-портов (System.IO.Ports): обнаружение опросом, сырые байты через прямой доступ |
 | `UniversalInput.Backends.GlobalHook` | Backend системного ввода через глобальный хук ([SharpHook](https://github.com/TolikPylypchuk/SharpHook)): клавиатура и мышь всей системы, только наблюдение |
+| `UniversalInput.Backends.Hid` | Backend HID-устройств ([HidSharp](https://www.zer7.com/software/hidsharp)): перечисление с VID/PID/серийным номером, сырые отчёты через прямой доступ |
 | `tests/*` | Тесты xUnit v3 (включая проверку правил зависимостей по файлам проектов) |
 | `samples/UniversalInput.Samples.ConsoleApp` | Консольный пример на mock backend |
 
@@ -24,7 +25,8 @@
 ```csharp
 services.AddUniversalInput(input => input
 	.AddSerial(options => options.PollInterval = TimeSpan.FromSeconds(1))
-	.AddGlobalHook());
+	.AddGlobalHook()
+	.AddHid(options => options.Filter = info => info.VendorId == 0x046D));
 ```
 
 Пакет backend зависит только от `UniversalInput.Abstractions`: метод расширения (`AddSerial`) вешается на `IInputBackendBuilder`, который реализует построитель из Hosting.
@@ -72,6 +74,19 @@ dotnet run --project samples/UniversalInput.Samples.ConsoleApp
 - Поддерживаемые SharpHook платформы: Windows (x64, x86, arm64), macOS (x64, arm64), Linux (x64, arm64, arm32). Мобильные платформы и браузер отклоняются проверкой.
 - **Не проверено ни на одной реальной ОС**: тесты работают с подменённым источником хука; логику SharpHook я проверить не мог.
 
+## Backend Hid
+
+Каждый HID-интерфейс — отдельное устройство (`Kind` — по применению из дескриптора: клавиатура, мышь, джойстик, геймпад, сенсорное устройство или просто `hid`) с VID, PID и серийным номером в `Identity`. Один физический прибор часто даёт несколько интерфейсов, и каждый виден отдельно.
+
+- Данные отдаются сырыми отчётами через `OpenRawAsync`. Первый байт отчёта — его идентификатор (0, если устройство нумерацию не использует). Буфер чтения не должен быть короче самого длинного входного отчёта: короткий буфер отклоняется, а не обрезает данные.
+- `Observe` и `Emulate` объявлены неподдерживаемыми: из отчётов событий ввода backend не строит, дескриптор разбирается только до уровня «страница и применение» коллекций верхнего уровня. Поэтому возможности устройства (`Capabilities`) описывают класс устройства: оси, колесо и число кнопок не извлекаются.
+- Подключение и отключение — по событию HidSharp плюс периодическая сверка списка (`RescanInterval`, 10 с по умолчанию), потому что событие на разных ОС срабатывает не одинаково надёжно.
+- HidSharp не сообщает шину подключения, поэтому `Bus = Unknown`. Core сопоставляет устройства из разных backend только при совпадении шины, так что с `GlobalHook` или другими backend, где шина указана, HID-интерфейс автоматически не сливается.
+- Открыть можно не всё. Windows: клавиатуры и мыши принадлежат системе, открыть их для обмена нельзя. Linux: нужен доступ к `/dev/hidraw*` (правило udev) и библиотека libudev. macOS: клавиатурам и мышам нужно разрешение «Мониторинг ввода». HidSharp причину отказа не различает: без прав на Linux/macOS приходит `PermissionDenied`, остальные отказы — `DeviceBusy` с подсказкой по ОС.
+- Чтение прерывается отменой с задержкой до 250 мс: HidSharp читает блокирующе, и backend читает короткими отрезками.
+- Feature-отчёты не поддерживаются. На Android, iOS и в браузере проверка возвращает `PlatformRestriction`.
+- **Не проверено ни на одной реальной ОС и ни с одним устройством**: тесты работают с подменённой платформой.
+
 ## Ещё не сделано
 
-- Backend Hid, Sdl, Native, Bluetooth, Android, iOS и сетевая часть; эмуляция и перехват для GlobalHook.
+- Backend Sdl, Native, Bluetooth, Android, iOS и сетевая часть; эмуляция и перехват для GlobalHook; разбор HID-отчётов в события ввода.

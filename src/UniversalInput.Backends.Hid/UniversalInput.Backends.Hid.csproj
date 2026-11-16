@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<Description>Backend UniversalInput для HID-устройств: перечисление, идентичность и сырые отчёты (HidSharp).</Description>
+		<RootNamespace>UniversalInput.Backends.Hid</RootNamespace>
+	</PropertyGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\UniversalInput.Abstractions\UniversalInput.Abstractions.csproj" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="HidSharp" />
+	</ItemGroup>
+	<ItemGroup>
+		<InternalsVisibleTo Include="UniversalInput.Backends.Hid.Tests" />
+	</ItemGroup>
+</Project>

@@ -6,12 +6,14 @@
 		<Project Path="src/UniversalInput.Testing/UniversalInput.Testing.csproj" />
 		<Project Path="src/UniversalInput.Backends.Serial/UniversalInput.Backends.Serial.csproj" />
 		<Project Path="src/UniversalInput.Backends.GlobalHook/UniversalInput.Backends.GlobalHook.csproj" />
+		<Project Path="src/UniversalInput.Backends.Hid/UniversalInput.Backends.Hid.csproj" />
 	</Folder>
 	<Folder Name="/tests/">
 		<Project Path="tests/UniversalInput.Core.Tests/UniversalInput.Core.Tests.csproj" />
 		<Project Path="tests/UniversalInput.Hosting.Tests/UniversalInput.Hosting.Tests.csproj" />
 		<Project Path="tests/UniversalInput.Backends.Serial.Tests/UniversalInput.Backends.Serial.Tests.csproj" />
 		<Project Path="tests/UniversalInput.Backends.GlobalHook.Tests/UniversalInput.Backends.GlobalHook.Tests.csproj" />
+		<Project Path="tests/UniversalInput.Backends.Hid.Tests/UniversalInput.Backends.Hid.Tests.csproj" />
 	</Folder>
 	<Folder Name="/samples/">
 		<Project Path="samples/UniversalInput.Samples.ConsoleApp/UniversalInput.Samples.ConsoleApp.csproj" />
