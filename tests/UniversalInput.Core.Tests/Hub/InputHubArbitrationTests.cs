@@ -76,11 +76,16 @@ public class InputHubArbitrationTests
 
 		native.Disconnect(id);
 		hid.Emit(InputEvent.KeyDown(id, 5));
-		hid.Disconnect(id);
-		var events = await subscription.ReadEventsAsync(2);
 
-		Assert.Equal<InputEventKind>([InputEventKind.KeyPressed, InputEventKind.DeviceDisconnected], events.Select(e => e.Kind));
-		Assert.Equal(5, events[0].Int0);
+		// Диспетчер работает асинхронно: событие нужно дождаться до отключения устройства,
+		// иначе оно будет отброшено как событие уже удалённого устройства.
+		var first = Assert.Single(await subscription.ReadEventsAsync(1));
+		hid.Disconnect(id);
+		var second = Assert.Single(await subscription.ReadEventsAsync(1));
+
+		Assert.Equal(InputEventKind.KeyPressed, first.Kind);
+		Assert.Equal(5, first.Int0);
+		Assert.Equal(InputEventKind.DeviceDisconnected, second.Kind);
 	}
 
 	[Fact]
