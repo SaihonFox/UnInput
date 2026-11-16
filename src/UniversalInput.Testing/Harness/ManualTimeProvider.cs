@@ -12,10 +12,12 @@ public sealed class ManualTimeProvider : TimeProvider
 	private DateTimeOffset _now;
 
 	public ManualTimeProvider(DateTimeOffset? start = null)
-		: base(TimeSpan.TicksPerSecond)
 	{
 		_now = start ?? new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 	}
+
+	/// <summary>Один такт метки времени — 100 нс (как <see cref="DateTimeOffset.UtcTicks"/>).</summary>
+	public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
 	public override DateTimeOffset GetUtcNow()
 	{
