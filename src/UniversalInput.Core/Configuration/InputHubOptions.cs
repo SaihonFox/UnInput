@@ -24,8 +24,28 @@ public sealed class InputHubOptions
 	/// <summary>Идентификаторы backend в порядке убывания приоритета при выборе исполнителя операции.</summary>
 	public List<string> BackendPriority { get; set; } = [];
 
+	/// <summary>
+	/// Приоритет backend по видам устройств (ключ — <see cref="InputDeviceKind.Name"/>) при выборе владельца роли
+	/// для устройства, которое видят несколько backend. Backend, которых в списке нет, идут после перечисленных.
+	/// По умолчанию: геймпады и джойстики — Sdl, затем Hid; клавиатуры и мыши по устройствам — Native, затем Hid.
+	/// </summary>
+	public Dictionary<string, List<string>> KindPriority { get; set; } = new()
+	{
+		["gamepad"] = ["sdl", "hid"],
+		["joystick"] = ["sdl", "hid"],
+		["keyboard"] = ["native", "hid"],
+		["mouse"] = ["native", "hid"],
+	};
+
+	/// <summary>Приоритет backend для сырых reports (<see cref="InputOperation.DirectAccess"/>): по умолчанию Hid, затем Native.</summary>
+	public List<string> RawAccessPriority { get; set; } = ["hid", "native"];
+
 	public void Validate()
 	{
+		ArgumentNullException.ThrowIfNull(KindPriority);
+		ArgumentNullException.ThrowIfNull(RawAccessPriority);
+		ArgumentNullException.ThrowIfNull(BackendPriority);
+
 		if (BackendQueueCapacity < 2)
 		{
 			throw new ArgumentOutOfRangeException(nameof(BackendQueueCapacity), BackendQueueCapacity, "Ёмкость очереди должна быть не меньше 2.");

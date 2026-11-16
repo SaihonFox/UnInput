@@ -52,7 +52,7 @@ public sealed class InputHub : IInputHub, IAsyncDisposable
 			throw new ArgumentException("Слишком много backend.", nameof(backends));
 		}
 
-		_registry = new DeviceRegistry(time, _options.RemovedDeviceRetention);
+		_registry = new DeviceRegistry(time, _options.RemovedDeviceRetention, new RolePriority(_options));
 
 		var indexes = new Dictionary<string, ushort>(StringComparer.Ordinal);
 		var queues = new BackendQueue[registrations.Length];
@@ -73,7 +73,7 @@ public sealed class InputHub : IInputHub, IAsyncDisposable
 			queues[i] = new BackendQueue(index, id, _options.BackendQueueCapacity);
 		}
 
-		_dispatcher = new EventDispatcher(queues, _registry, _metrics, indexes);
+		_dispatcher = new EventDispatcher(queues, _registry, _metrics, indexes, time);
 
 		_runners = new BackendRunner[registrations.Length];
 		for (var i = 0; i < registrations.Length; i++)
@@ -246,10 +246,13 @@ public sealed class InputHub : IInputHub, IAsyncDisposable
 			}
 
 			var inner = await access.OpenAsync(id, mode, cancellationToken).ConfigureAwait(false);
-			var handle = new RawChannelHandle(inner, () => _rawChannels.TryRemove(id, out _));
+			var handle = new RawChannelHandle(inner, runner.Index, () => _rawChannels.TryRemove(id, out _));
 			_rawChannels[id] = handle;
 
-			if (!_registry.TryGetLive(id, out _))
+			// Устройство могло пропасть или остаться без этого поставщика, пока канал открывался.
+			if (!_registry.TryGetLive(id, out var entry)
+				|| !entry.State.TryGetOwner(InputOperation.DirectAccess, out var owner)
+				|| owner != runner.Index)
 			{
 				handle.Close();
 				throw InputException.DeviceUnavailable($"Устройство {id} отключилось во время открытия.");
@@ -264,11 +267,12 @@ public sealed class InputHub : IInputHub, IAsyncDisposable
 		}
 	}
 
-	private void OnDeviceRemoved(DeviceId id)
+	/// <summary>Канал закрывается, только если исчез поставщик, через которого он открыт.</summary>
+	private void OnDeviceRemoved(DeviceId id, ushort backend)
 	{
-		if (_rawChannels.TryGetValue(id, out var handle))
+		if (_rawChannels.TryGetValue(id, out var handle) && handle is not null && handle.Backend == backend)
 		{
-			handle?.Close();
+			handle.Close();
 		}
 	}
 
@@ -287,7 +291,12 @@ public sealed class InputHub : IInputHub, IAsyncDisposable
 				throw ToException(operation, deviceSupport);
 			}
 
-			return _runners[entry.Backend];
+			if (!entry.State.TryGetOwner(operation, out var owner))
+			{
+				throw InputException.Unsupported($"Для устройства {device} нет backend, выполняющего операцию {operation}.");
+			}
+
+			return _runners[owner];
 		}
 
 		foreach (var runner in _byPriority)
@@ -313,13 +322,17 @@ public sealed class InputHub : IInputHub, IAsyncDisposable
 			return OperationSupport.Supported;
 		}
 
-		var runner = _runners[entry.Backend];
+		var state = entry.State;
+
+		// Роль исполняет её владелец; если роль никто не поддерживает, причину сообщает основной поставщик.
+		var owned = state.TryGetOwner(operation, out var ownerIndex);
+		var runner = _runners[owned ? ownerIndex : state.ObserveOwner];
 		if (!runner.IsRunning)
 		{
 			return GetBackendSupport(runner, operation);
 		}
 
-		if (!entry.Device.Operations.TryGetValue(operation, out var declared))
+		if (!state.Device.Operations.TryGetValue(operation, out var declared))
 		{
 			return OperationSupport.Unsupported($"Backend '{runner.Id}' не объявил операцию {operation} для этого устройства.");
 		}

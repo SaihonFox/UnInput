@@ -11,11 +11,15 @@ internal sealed class RawChannelHandle : IRawDeviceChannel
 	private volatile bool _closed;
 	private int _disposed;
 
-	public RawChannelHandle(IRawDeviceChannel inner, Action released)
+	public RawChannelHandle(IRawDeviceChannel inner, ushort backend, Action released)
 	{
 		_inner = inner;
+		Backend = backend;
 		_released = released;
 	}
+
+	/// <summary>Backend, через который открыт канал.</summary>
+	public ushort Backend { get; }
 
 	public async ValueTask<int> ReadAsync(Memory<byte> report, CancellationToken cancellationToken)
 	{

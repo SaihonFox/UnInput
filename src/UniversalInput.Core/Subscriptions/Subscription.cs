@@ -19,7 +19,11 @@ internal sealed class Subscription : IInputSubscription
 	private readonly Action<Subscription> _onDispose;
 	private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 	private readonly SubscriptionReader _reader;
+	private readonly TimeProvider _time;
+	private readonly TimeSpan _rateInterval;
+	private readonly Dictionary<RateKey, RateStream> _streams = new();
 
+	private ITimer? _rateTimer;
 	private int _head;
 	private int _count;
 	private long _dropped;
@@ -31,11 +35,26 @@ internal sealed class Subscription : IInputSubscription
 		SubscriptionOptions options,
 		EventFilter filter,
 		InputMetrics metrics,
-		Action<Subscription> onDispose)
+		Action<Subscription> onDispose,
+		TimeProvider? time = null)
 	{
 		if (options.Capacity < 2)
 		{
 			throw new ArgumentOutOfRangeException(nameof(options), options.Capacity, "Ёмкость подписки должна быть не меньше 2.");
+		}
+
+		_time = time ?? TimeProvider.System;
+		if (options.MaxContinuousRate is { } rate)
+		{
+			if (!(rate > 0) || double.IsInfinity(rate))
+			{
+				throw new ArgumentOutOfRangeException(
+					nameof(options), rate, "MaxContinuousRate должен быть положительным конечным числом.");
+			}
+
+			// Не короче одного такта и не длиннее года: при меньших частотах предел всё равно бессмыслен.
+			var ticks = Math.Ceiling(TimeSpan.TicksPerSecond / rate);
+			_rateInterval = TimeSpan.FromTicks((long)Math.Clamp(ticks, 1d, (double)(TimeSpan.TicksPerDay * 365)));
 		}
 
 		_ring = new InputEvent[options.Capacity];
@@ -51,14 +70,14 @@ internal sealed class Subscription : IInputSubscription
 	public long DroppedCount => Interlocked.Read(ref _dropped);
 
 	/// <summary>Предлагает событие подписке. Вызывается только диспетчером.</summary>
-	public void Offer(in InputEvent inputEvent, InputDevice? device)
+	public void Offer(in InputEvent inputEvent, InputDevice? device, bool aggregateDuplicate = false)
 	{
-		if (!_filter.Matches(in inputEvent, device))
+		if (!_filter.Matches(in inputEvent, device, aggregateDuplicate))
 		{
 			return;
 		}
 
-		TaskCompletionSource<bool>? toWake = null;
+		TaskCompletionSource<bool>? toWake;
 		lock (_gate)
 		{
 			if (_completed)
@@ -66,20 +85,16 @@ internal sealed class Subscription : IInputSubscription
 				return;
 			}
 
-			if (_count < _ring.Length)
+			if (_rateInterval > TimeSpan.Zero)
 			{
-				Append(in inputEvent);
+				AdmitLimited(in inputEvent);
 			}
 			else
 			{
-				HandleFull(in inputEvent);
+				Enqueue(in inputEvent);
 			}
 
-			if (_count > 0 && _waiter is not null)
-			{
-				toWake = _waiter;
-				_waiter = null;
-			}
+			toWake = TakeWaiter();
 		}
 
 		toWake?.TrySetResult(true);
@@ -94,9 +109,14 @@ internal sealed class Subscription : IInputSubscription
 		{
 			if (!_completed)
 			{
+				// Накопленные из-за предела частоты события не должны пропасть: последнее значение — самое важное.
+				FlushRate(DeviceId.None);
 				_completed = true;
 				_fault ??= fault;
 			}
+
+			_rateTimer?.Dispose();
+			_rateTimer = null;
 
 			waiter = _waiter;
 			_waiter = null;
@@ -211,6 +231,208 @@ internal sealed class Subscription : IInputSubscription
 		_count++;
 	}
 
+	private void Enqueue(in InputEvent inputEvent)
+	{
+		if (_count < _ring.Length)
+		{
+			Append(in inputEvent);
+		}
+		else
+		{
+			HandleFull(in inputEvent);
+		}
+	}
+
+	private TaskCompletionSource<bool>? TakeWaiter()
+	{
+		if (_count > 0 && _waiter is not null)
+		{
+			var waiter = _waiter;
+			_waiter = null;
+			return waiter;
+		}
+
+		return null;
+	}
+
+	// Предел частоты (MaxContinuousRate). Всё ниже вызывается под _gate.
+
+	/// <summary>
+	/// Непрерывное событие проходит сразу, если с прошлого прошло не меньше интервала; иначе оно ждёт в «отложенном»
+	/// слоте своего потока и склеивается со следующими, а по таймеру уходит одним событием. Дискретное событие
+	/// сначала выпускает отложенные события своего устройства, чтобы порядок не нарушился.
+	/// </summary>
+	private void AdmitLimited(in InputEvent inputEvent)
+	{
+		if (!inputEvent.IsContinuous)
+		{
+			FlushRate(inputEvent.Device);
+			if (inputEvent.Kind == InputEventKind.DeviceDisconnected)
+			{
+				ForgetStreams(inputEvent.Device);
+			}
+
+			Enqueue(in inputEvent);
+			return;
+		}
+
+		var key = KeyOf(in inputEvent);
+		var now = _time.GetTimestamp();
+
+		if (!_streams.TryGetValue(key, out var stream))
+		{
+			stream = new RateStream();
+			_streams[key] = stream;
+		}
+		else if (stream.HasPending)
+		{
+			if (EventCoalescer.TryMerge(in stream.Pending, in inputEvent, out var merged))
+			{
+				stream.Pending = merged;
+				_metrics.Coalesced();
+				return;
+			}
+
+			// Ключ учитывает всё, что мешает склейке, поэтому сюда попадают только непредвиденные случаи.
+			EmitPending(stream, now);
+			stream.Pending = inputEvent;
+			stream.HasPending = true;
+			ScheduleRateTimer(now);
+			return;
+		}
+		else if (_time.GetElapsedTime(stream.LastEmit, now) < _rateInterval)
+		{
+			stream.Pending = inputEvent;
+			stream.HasPending = true;
+			ScheduleRateTimer(now);
+			return;
+		}
+
+		stream.LastEmit = now;
+		Enqueue(in inputEvent);
+	}
+
+	private static RateKey KeyOf(in InputEvent inputEvent)
+	{
+		var isChannelled = inputEvent.Kind is InputEventKind.GamepadAxisChanged
+			or InputEventKind.TouchMoved
+			or InputEventKind.SensorChanged;
+		var channel = isChannelled ? inputEvent.Int0 : 0;
+
+		return new RateKey(inputEvent.Device, inputEvent.Kind, channel, (inputEvent.Flags & InputEventFlags.Absolute) != 0);
+	}
+
+	private void EmitPending(RateStream stream, long now)
+	{
+		stream.HasPending = false;
+		stream.LastEmit = now;
+		Enqueue(in stream.Pending);
+	}
+
+	/// <summary>Выпускает отложенные события устройства (для <see cref="DeviceId.None"/> — всех устройств).</summary>
+	private void FlushRate(DeviceId device)
+	{
+		if (_streams.Count == 0)
+		{
+			return;
+		}
+
+		var now = _time.GetTimestamp();
+		foreach (var pair in _streams)
+		{
+			if (pair.Value.HasPending && (device.IsNone || pair.Key.Device == device))
+			{
+				EmitPending(pair.Value, now);
+			}
+		}
+	}
+
+	private void ForgetStreams(DeviceId device)
+	{
+		List<RateKey>? stale = null;
+		foreach (var key in _streams.Keys)
+		{
+			if (key.Device == device)
+			{
+				stale ??= [];
+				stale.Add(key);
+			}
+		}
+
+		if (stale is null)
+		{
+			return;
+		}
+
+		foreach (var key in stale)
+		{
+			_streams.Remove(key);
+		}
+	}
+
+	private void ScheduleRateTimer(long now)
+	{
+		var delay = TimeSpan.MaxValue;
+		foreach (var stream in _streams.Values)
+		{
+			if (!stream.HasPending)
+			{
+				continue;
+			}
+
+			var remaining = _rateInterval - _time.GetElapsedTime(stream.LastEmit, now);
+			if (remaining < delay)
+			{
+				delay = remaining;
+			}
+		}
+
+		if (delay == TimeSpan.MaxValue)
+		{
+			return;
+		}
+
+		if (delay < TimeSpan.Zero)
+		{
+			delay = TimeSpan.Zero;
+		}
+
+		if (_rateTimer is null)
+		{
+			_rateTimer = _time.CreateTimer(OnRateTimer, null, delay, Timeout.InfiniteTimeSpan);
+		}
+		else
+		{
+			_rateTimer.Change(delay, Timeout.InfiniteTimeSpan);
+		}
+	}
+
+	private void OnRateTimer(object? state)
+	{
+		TaskCompletionSource<bool>? toWake;
+		lock (_gate)
+		{
+			if (_completed)
+			{
+				return;
+			}
+
+			var now = _time.GetTimestamp();
+			foreach (var stream in _streams.Values)
+			{
+				if (stream.HasPending && _time.GetElapsedTime(stream.LastEmit, now) >= _rateInterval)
+				{
+					EmitPending(stream, now);
+				}
+			}
+
+			ScheduleRateTimer(now);
+			toWake = TakeWaiter();
+		}
+
+		toWake?.TrySetResult(true);
+	}
+
 	private void HandleFull(in InputEvent inputEvent)
 	{
 		if (inputEvent.IsContinuous && TryCoalesce(in inputEvent))
@@ -317,6 +539,16 @@ internal sealed class Subscription : IInputSubscription
 			Sequence = basis.Sequence,
 			Backend = basis.Backend,
 		};
+
+	/// <summary>Поток непрерывных событий, к которому применяется предел частоты.</summary>
+	private readonly record struct RateKey(DeviceId Device, InputEventKind Kind, int Channel, bool Absolute);
+
+	private sealed class RateStream
+	{
+		public long LastEmit;
+		public bool HasPending;
+		public InputEvent Pending;
+	}
 
 	private sealed class SubscriptionReader : ChannelReader<InputEvent>
 	{

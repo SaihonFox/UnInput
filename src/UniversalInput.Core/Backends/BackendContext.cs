@@ -24,9 +24,14 @@ internal sealed class BackendContext : IBackendContext
 			throw InputException.BackendUnavailable($"Backend '{_runner.Id}' не запущен.");
 		}
 
-		var device = _runner.Registry.Add(_runner.Index, _runner.Id, descriptor);
-		var connected = InputEvent.Connected(device.Id);
-		Enqueue(in connected);
+		var device = _runner.Registry.Add(_runner.Index, _runner.Id, descriptor, out var created);
+		if (created)
+		{
+			// Устройство, к которому присоединился второй backend, уже объявлено: повторного DeviceConnected не будет.
+			var connected = InputEvent.Connected(device.Id);
+			Enqueue(in connected);
+		}
+
 		return device.Id;
 	}
 
@@ -37,11 +42,15 @@ internal sealed class BackendContext : IBackendContext
 			return;
 		}
 
-		if (_runner.Registry.Remove(id, _runner.Index, out _))
+		if (_runner.Registry.Remove(id, _runner.Index, out _, out var deviceGone))
 		{
 			_runner.OnDeviceRemoved(id);
-			var disconnected = InputEvent.Disconnected(id);
-			Enqueue(in disconnected);
+			if (deviceGone)
+			{
+				// Если устройство осталось благодаря другому backend, подписчики отключения не видят.
+				var disconnected = InputEvent.Disconnected(id);
+				Enqueue(in disconnected);
+			}
 		}
 	}
 

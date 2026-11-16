@@ -15,7 +15,7 @@ internal sealed class BackendRunner : IAsyncDisposable
 	private readonly object _gate = new();
 	private readonly InputHubOptions _options;
 	private readonly Action _wake;
-	private readonly Action<DeviceId> _deviceRemoved;
+	private readonly Action<DeviceId, ushort> _deviceRemoved;
 	private readonly ILogger _logger;
 	private readonly CancellationTokenSource _lifetime = new();
 
@@ -38,7 +38,7 @@ internal sealed class BackendRunner : IAsyncDisposable
 		InputMetrics metrics,
 		TimeProvider time,
 		Action wake,
-		Action<DeviceId> deviceRemoved,
+		Action<DeviceId, ushort> deviceRemoved,
 		ILogger logger)
 	{
 		Backend = registration.Backend;
@@ -83,7 +83,8 @@ internal sealed class BackendRunner : IAsyncDisposable
 
 	public void Wake() => _wake();
 
-	public void OnDeviceRemoved(DeviceId id) => _deviceRemoved(id);
+	/// <summary>Backend перестал поставлять устройство (само устройство при этом могло остаться у другого backend).</summary>
+	public void OnDeviceRemoved(DeviceId id) => _deviceRemoved(id, Index);
 
 	/// <summary>Возможность backend; доступна, только пока backend запущен.</summary>
 	public bool TryGetFeature<TFeature>([NotNullWhen(true)] out TFeature? feature)
@@ -442,11 +443,17 @@ internal sealed class BackendRunner : IAsyncDisposable
 
 	private void RemoveAllDevices()
 	{
-		foreach (var device in Registry.RemoveAll(Index))
+		List<DeviceId> survivors = [];
+		foreach (var device in Registry.RemoveAll(Index, survivors))
 		{
-			_deviceRemoved(device.Id);
+			_deviceRemoved(device.Id, Index);
 			var disconnected = InputEvent.Disconnected(device.Id);
 			Queue.TryWrite(in disconnected);
+		}
+
+		foreach (var id in survivors)
+		{
+			_deviceRemoved(id, Index);
 		}
 
 		_wake();

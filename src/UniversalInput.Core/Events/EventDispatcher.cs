@@ -19,6 +19,7 @@ internal sealed class EventDispatcher
 	private readonly DeviceRegistry _registry;
 	private readonly InputMetrics _metrics;
 	private readonly IReadOnlyDictionary<string, ushort> _backendIndexes;
+	private readonly TimeProvider _time;
 	private readonly Channel<bool> _wake = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
 	{
 		SingleReader = true,
@@ -37,12 +38,14 @@ internal sealed class EventDispatcher
 		BackendQueue[] queues,
 		DeviceRegistry registry,
 		InputMetrics metrics,
-		IReadOnlyDictionary<string, ushort> backendIndexes)
+		IReadOnlyDictionary<string, ushort> backendIndexes,
+		TimeProvider? time = null)
 	{
 		_queues = queues;
 		_registry = registry;
 		_metrics = metrics;
 		_backendIndexes = backendIndexes;
+		_time = time ?? TimeProvider.System;
 	}
 
 	/// <summary>Сколько событий уже обработано (последний присвоенный номер).</summary>
@@ -84,7 +87,7 @@ internal sealed class EventDispatcher
 	public IInputSubscription Subscribe(SubscriptionOptions options)
 	{
 		var filter = EventFilter.Create(options, _backendIndexes);
-		var subscription = new Subscription(options, filter, _metrics, Unsubscribe);
+		var subscription = new Subscription(options, filter, _metrics, Unsubscribe, _time);
 
 		lock (_subscriptionsGate)
 		{
@@ -163,9 +166,10 @@ internal sealed class EventDispatcher
 		};
 
 		InputDevice? device = null;
+		var aggregateDuplicate = false;
 		if (inputEvent.Kind != InputEventKind.StreamGap && !inputEvent.Device.IsNone)
 		{
-			if (!_registry.TryGet(inputEvent.Device, out var entry) || entry.Backend != queue.Index)
+			if (!_registry.TryGet(inputEvent.Device, out var entry) || !entry.WasProvider(queue.Index))
 			{
 				_metrics.Dropped(queue.BackendId, "unknown_device");
 				return;
@@ -178,10 +182,19 @@ internal sealed class EventDispatcher
 				return;
 			}
 
-			device = entry.Device;
+			// Роль Observe у логического устройства одна: события остальных поставщиков были бы дублями.
+			var state = entry.State;
+			if (!lifecycle && state.ObserveOwner != queue.Index)
+			{
+				_metrics.Dropped(queue.BackendId, "not_role_owner");
+				return;
+			}
+
+			device = state.Device;
 			if (device.Origin == DeviceOrigin.Aggregate)
 			{
 				inputEvent = inputEvent with { Flags = inputEvent.Flags | InputEventFlags.Aggregate };
+				aggregateDuplicate = IsObservedPerDevice(inputEvent.Kind);
 			}
 		}
 
@@ -189,7 +202,21 @@ internal sealed class EventDispatcher
 
 		foreach (var subscription in Volatile.Read(ref _subscriptions))
 		{
-			subscription.Offer(in inputEvent, device);
+			subscription.Offer(in inputEvent, device, aggregateDuplicate);
 		}
 	}
+
+	/// <summary>
+	/// Те же события приходят и от агрегата (глобальный хук), и от устройств по отдельности. Пока устройства
+	/// этой категории наблюдаются, агрегатные события — дубли; подписка без явного выбора устройств их не получает.
+	/// </summary>
+	private bool IsObservedPerDevice(InputEventKind kind) => kind switch
+	{
+		InputEventKind.KeyPressed or InputEventKind.KeyReleased => _registry.KeyboardObserved,
+		InputEventKind.MouseMoved
+			or InputEventKind.MouseButtonPressed
+			or InputEventKind.MouseButtonReleased
+			or InputEventKind.MouseWheel => _registry.MouseObserved,
+		_ => false,
+	};
 }

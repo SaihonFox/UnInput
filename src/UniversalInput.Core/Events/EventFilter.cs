@@ -9,6 +9,7 @@ internal sealed class EventFilter
 	private readonly HashSet<ushort>? _backends;
 	private readonly HashSet<DeviceOrigin>? _origins;
 	private readonly Func<InputEvent, bool>? _predicate;
+	private readonly bool _dropsAggregateDuplicates;
 
 	private EventFilter(SubscriptionOptions options, IReadOnlyDictionary<string, ushort> backendIndexes)
 	{
@@ -17,6 +18,9 @@ internal sealed class EventFilter
 		_deviceKinds = options.DeviceKinds is null ? null : new HashSet<InputDeviceKind>(options.DeviceKinds);
 		_origins = options.Origins is null ? null : new HashSet<DeviceOrigin>(options.Origins);
 		_predicate = options.Predicate;
+
+		// Явный выбор происхождения, устройств или их видов — осознанный запрос, дублями его не лишаем.
+		_dropsAggregateDuplicates = options.Origins is null && options.Devices is null && options.DeviceKinds is null;
 
 		if (options.BackendIds is not null)
 		{
@@ -37,10 +41,11 @@ internal sealed class EventFilter
 		new(options, backendIndexes);
 
 	/// <summary>
-	/// Проверяет событие. <see cref="InputEventKind.StreamGap"/> проходит всегда (кроме фильтра по backend):
+	/// Проверяет событие. <paramref name="aggregateDuplicate"/> — агрегатное событие, которое уже приходит от отдельных устройств.
+	/// <see cref="InputEventKind.StreamGap"/> проходит всегда (кроме фильтра по backend):
 	/// потребитель должен видеть пропуск. Исключение предиката считается отказом и не роняет диспетчер.
 	/// </summary>
-	public bool Matches(in InputEvent inputEvent, InputDevice? device)
+	public bool Matches(in InputEvent inputEvent, InputDevice? device, bool aggregateDuplicate = false)
 	{
 		if (_backends is not null && !_backends.Contains(inputEvent.Backend))
 		{
@@ -50,6 +55,11 @@ internal sealed class EventFilter
 		if (inputEvent.Kind == InputEventKind.StreamGap)
 		{
 			return true;
+		}
+
+		if (aggregateDuplicate && _dropsAggregateDuplicates)
+		{
+			return false;
 		}
 
 		if (_kinds is not null && !_kinds.Contains(inputEvent.Kind))
