@@ -15,6 +15,7 @@
 | `UniversalInput.Backends.Serial` | Backend COM-портов (System.IO.Ports): обнаружение опросом, сырые байты через прямой доступ |
 | `UniversalInput.Backends.GlobalHook` | Backend системного ввода через глобальный хук ([SharpHook](https://github.com/TolikPylypchuk/SharpHook)): клавиатура и мышь всей системы, только наблюдение |
 | `UniversalInput.Backends.Hid` | Backend HID-устройств ([HidSharp](https://www.zer7.com/software/hidsharp)): перечисление с VID/PID/серийным номером, сырые отчёты через прямой доступ |
+| `UniversalInput.Backends.Sdl` | Backend геймпадов через нативную SDL3: кнопки, оси, датчики, вибрация |
 | `tests/*` | Тесты xUnit v3 (включая проверку правил зависимостей по файлам проектов) |
 | `samples/UniversalInput.Samples.ConsoleApp` | Консольный пример на mock backend |
 
@@ -26,7 +27,8 @@
 services.AddUniversalInput(input => input
 	.AddSerial(options => options.PollInterval = TimeSpan.FromSeconds(1))
 	.AddGlobalHook()
-	.AddHid(options => options.Filter = info => info.VendorId == 0x046D));
+	.AddHid(options => options.Filter = info => info.VendorId == 0x046D)
+	.AddSdl(options => options.EnableSensors = true));
 ```
 
 Пакет backend зависит только от `UniversalInput.Abstractions`: метод расширения (`AddSerial`) вешается на `IInputBackendBuilder`, который реализует построитель из Hosting.
@@ -87,6 +89,24 @@ dotnet run --project samples/UniversalInput.Samples.ConsoleApp
 - Feature-отчёты не поддерживаются. На Android, iOS и в браузере проверка возвращает `PlatformRestriction`.
 - **Не проверено ни на одной реальной ОС и ни с одним устройством**: тесты работают с подменённой платформой.
 
+## Backend Sdl
+
+Геймпады через нативную библиотеку SDL3. Библиотеку (`SDL3.dll`, `libSDL3.so.0`, `libSDL3.dylib`) приложение поставляет само: пакета с бинарниками здесь нет, чтобы не тянуть зависимости. Если она не найдена, проверка возвращает `BackendUnavailable` с подсказкой по ОС; путь можно задать в `SdlBackendOptions.LibraryPath`. Нужна SDL 3.2 или новее. Вызовы SDL объявлены в проекте напрямую (около 20 функций), готовая привязка не используется.
+
+- Наблюдение: кнопки и оси. Кнопки SDL с номерами за пределами стандартных пятнадцати (MISC, лепестки, тачпад) не передаются. Стики нормализуются в диапазон от −1 до 1 (в SDL «вверх» отрицательно, направление не меняется), курки — от 0 до 1.
+- Датчики (акселерометр в м/с², гироскоп в рад/с) включаются настройкой `EnableSensors`; по умолчанию выключены, потому что расходуют заряд и CPU.
+- Вибрация: `IInputHub.PlayHapticAsync`. SDL заранее не сообщает, вибрирует ли конкретная модель, поэтому операция `Output` объявлена для каждого геймпада, а при отсутствии вибрации возвращается `Unsupported` с причиной SDL. Нулевая длительность останавливает вибрацию.
+- Показываются только устройства с раскладкой геймпада в базе SDL; джойстики, рули и т. п. без неё не показываются.
+- События приходят и без окна в фокусе (`AllowBackgroundEvents`, по умолчанию включено). Приложение, которое само опрашивает очередь событий SDL, не должно работать одновременно с этим backend: событие достанется тому, кто опросит первым.
+- Цикл событий идёт в отдельном потоке; остановка занимает до `PollInterval` (100 мс по умолчанию).
+- Эмуляция (виртуальные геймпады) и сырой доступ не поддерживаются: для сырых отчётов есть backend Hid. Шина подключения `Unknown`; в сопоставлении с Hid и другими backend участвуют VID, PID и серийный номер, если SDL его сообщает.
+- Не заявляется работа на Android и iOS: проверка возвращает `PlatformRestriction`.
+- **Не проверено на реальной SDL3 и реальных геймпадах**: раскладка событий сверена с документацией SDL3, номера кнопок и осей, имя свойства вибрации и вызовы функций — по знанию API; тесты работают с подменённой средой.
+
+## Вибрация в хабе
+
+`IInputHub.PlayHapticAsync(DeviceId, HapticEffect)` направляет эффект тому backend, который владеет ролью `Output` для устройства. Сила моторов — от 0 до 1; новый вызов заменяет предыдущий эффект.
+
 ## Ещё не сделано
 
-- Backend Sdl, Native, Bluetooth, Android, iOS и сетевая часть; эмуляция и перехват для GlobalHook; разбор HID-отчётов в события ввода.
+- Backend Native, Bluetooth, Android, iOS и сетевая часть; эмуляция и перехват для GlobalHook; разбор HID-отчётов в события ввода; джойстики без раскладки геймпада в Sdl.

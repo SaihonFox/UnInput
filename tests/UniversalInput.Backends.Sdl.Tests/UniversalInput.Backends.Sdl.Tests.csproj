@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<IsPackable>false</IsPackable>
+		<RootNamespace>UniversalInput.Backends.Sdl.Tests</RootNamespace>
+	</PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="xunit.v3" />
+		<PackageReference Include="xunit.runner.visualstudio" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" />
+	</ItemGroup>
+	<ItemGroup>
+		<Using Include="Xunit" />
+	</ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\..\src\UniversalInput.Abstractions\UniversalInput.Abstractions.csproj" />
+		<ProjectReference Include="..\..\src\UniversalInput.Core\UniversalInput.Core.csproj" />
+		<ProjectReference Include="..\..\src\UniversalInput.Testing\UniversalInput.Testing.csproj" />
+		<ProjectReference Include="..\..\src\UniversalInput.Backends.Sdl\UniversalInput.Backends.Sdl.csproj" />
+	</ItemGroup>
+</Project>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<Description>Backend UniversalInput для геймпадов через нативную библиотеку SDL3: кнопки, оси, датчики и вибрация.</Description>
+		<RootNamespace>UniversalInput.Backends.Sdl</RootNamespace>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	</PropertyGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\UniversalInput.Abstractions\UniversalInput.Abstractions.csproj" />
+	</ItemGroup>
+	<ItemGroup>
+		<InternalsVisibleTo Include="UniversalInput.Backends.Sdl.Tests" />
+	</ItemGroup>
+</Project>

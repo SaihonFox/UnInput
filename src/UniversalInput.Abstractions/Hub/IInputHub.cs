@@ -19,6 +19,12 @@ public interface IInputHub
 	ValueTask EmulateAsync(InputEvent inputEvent, CancellationToken cancellationToken = default);
 
 	/// <exception cref="InputException">Устройство недоступно, занято или не поддерживает прямой доступ.</exception>
+	/// <summary>
+	/// Запускает вибрацию на устройстве через backend, который владеет ролью <see cref="InputOperation.Output"/> для этого устройства.
+	/// Новый вызов заменяет предыдущий эффект. Единицы эффекта описаны в <see cref="HapticEffect"/>.
+	/// </summary>
+	ValueTask PlayHapticAsync(DeviceId id, HapticEffect effect, CancellationToken cancellationToken = default);
+
 	ValueTask<IRawDeviceChannel> OpenRawAsync(
 		DeviceId id, RawAccessMode mode, CancellationToken cancellationToken = default);
 }

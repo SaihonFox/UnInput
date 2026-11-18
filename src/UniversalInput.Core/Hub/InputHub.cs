@@ -222,6 +222,24 @@ public sealed class InputHub : IInputHub, IAsyncDisposable
 		await emulator.EmulateAsync(simulated, cancellationToken).ConfigureAwait(false);
 	}
 
+	public async ValueTask PlayHapticAsync(DeviceId id, HapticEffect effect, CancellationToken cancellationToken = default)
+	{
+		if (id.IsNone)
+		{
+			throw new ArgumentException("Нужно указать устройство.", nameof(id));
+		}
+
+		cancellationToken.ThrowIfCancellationRequested();
+
+		var runner = SelectRunner(InputOperation.Output, id);
+		if (!runner.TryGetFeature<IHapticOutput>(out var haptic))
+		{
+			throw InputException.Unsupported($"Backend '{runner.Id}' не поддерживает вибрацию.");
+		}
+
+		await haptic.PlayAsync(id, effect, cancellationToken).ConfigureAwait(false);
+	}
+
 	public async ValueTask<IRawDeviceChannel> OpenRawAsync(
 		DeviceId id, RawAccessMode mode, CancellationToken cancellationToken = default)
 	{

@@ -7,7 +7,7 @@ namespace UniversalInput.Testing.Mock;
 /// Управляемый backend для тестов библиотеки и приложений: устройства и события задаёт тест,
 /// проверка, запуск и остановка могут «ломаться» по команде. Возможности эмуляции и прямого доступа включаются свойствами.
 /// </summary>
-public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDeviceAccess
+public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDeviceAccess, IHapticOutput
 {
 	private readonly ConcurrentQueue<InputEvent> _emulated = new();
 	private readonly ConcurrentDictionary<DeviceId, MockRawChannel> _channels = new();
@@ -40,6 +40,9 @@ public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDevice
 
 	public bool RawAccessEnabled { get; set; } = true;
 
+	/// <summary>Вибрация выключена по умолчанию: <see cref="Describe"/> её не объявляет, и роль Output у mock-backend не возникает сама.</summary>
+	public bool HapticsEnabled { get; set; }
+
 	/// <summary>Устройства, которые появляются при запуске (первичное перечисление).</summary>
 	public IList<DeviceDescriptor> InitialDevices { get; } = [];
 
@@ -52,6 +55,10 @@ public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDevice
 	/// <summary>События, пришедшие через <see cref="IInputEmulator"/>.</summary>
 	public IReadOnlyCollection<InputEvent> Emulated => _emulated;
 
+	/// <summary>Эффекты, пришедшие через <see cref="IHapticOutput"/>.</summary>
+	public IReadOnlyCollection<(DeviceId Device, HapticEffect Effect)> Played => _played;
+
+	private readonly ConcurrentQueue<(DeviceId Device, HapticEffect Effect)> _played = new();
 	private int _startCount;
 	private int _stopCount;
 	private int _disposeCount;
@@ -141,7 +148,9 @@ public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDevice
 		where TFeature : class, IBackendFeature
 	{
 		feature = (object)this as TFeature;
-		if ((feature is IInputEmulator && !EmulationEnabled) || (feature is IRawDeviceAccess && !RawAccessEnabled))
+		if ((feature is IInputEmulator && !EmulationEnabled)
+			|| (feature is IRawDeviceAccess && !RawAccessEnabled)
+			|| (feature is IHapticOutput && !HapticsEnabled))
 		{
 			feature = null;
 		}
@@ -152,6 +161,12 @@ public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDevice
 	public ValueTask EmulateAsync(InputEvent inputEvent, CancellationToken cancellationToken)
 	{
 		_emulated.Enqueue(inputEvent);
+		return ValueTask.CompletedTask;
+	}
+
+	public ValueTask PlayAsync(DeviceId id, HapticEffect effect, CancellationToken cancellationToken)
+	{
+		_played.Enqueue((id, effect));
 		return ValueTask.CompletedTask;
 	}
 
