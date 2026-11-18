@@ -148,9 +148,10 @@ public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDevice
 		where TFeature : class, IBackendFeature
 	{
 		feature = (object)this as TFeature;
-		if ((feature is IInputEmulator && !EmulationEnabled)
-			|| (feature is IRawDeviceAccess && !RawAccessEnabled)
-			|| (feature is IHapticOutput && !HapticsEnabled))
+		// Решает запрошенная возможность, а не тип объекта: сам backend реализует их все сразу.
+		if ((typeof(TFeature) == typeof(IInputEmulator) && !EmulationEnabled)
+			|| (typeof(TFeature) == typeof(IRawDeviceAccess) && !RawAccessEnabled)
+			|| (typeof(TFeature) == typeof(IHapticOutput) && !HapticsEnabled))
 		{
 			feature = null;
 		}
