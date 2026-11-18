@@ -15,21 +15,43 @@ internal sealed class SharpHookEmulator : IHookEmulator
 {
 	private const string ApplicationName = "UniversalInput";
 
-	private readonly IEventSimulator _simulator = EventSimulator.Create(ApplicationName);
+	// Тип, который возвращает EventSimulator.Create, здесь не называется: в документации SharpHook его имя не приведено,
+	// поэтому методы симулятора захвачены делегатами. Это заодно сужает зависимость от API SharpHook до одного места.
+	private readonly Func<KeyCode, UioHookResult> _keyPress;
+	private readonly Func<KeyCode, UioHookResult> _keyRelease;
+	private readonly Func<short, short, UioHookResult> _moveAbsolute;
+	private readonly Func<short, short, UioHookResult> _moveRelative;
+	private readonly Func<HookMouseButton, UioHookResult> _mousePress;
+	private readonly Func<HookMouseButton, UioHookResult> _mouseRelease;
+	private readonly Func<short, MouseWheelScrollDirection, UioHookResult> _wheel;
+	private readonly IDisposable? _owner;
+
+	public SharpHookEmulator()
+	{
+		var simulator = EventSimulator.Create(ApplicationName);
+		_owner = simulator as IDisposable;
+		_keyPress = code => simulator.SimulateKeyPress(code);
+		_keyRelease = code => simulator.SimulateKeyRelease(code);
+		_moveAbsolute = (x, y) => simulator.SimulateMouseMovement(x, y);
+		_moveRelative = (x, y) => simulator.SimulateMouseMovementRelative(x, y);
+		_mousePress = button => simulator.SimulateMousePress(button);
+		_mouseRelease = button => simulator.SimulateMouseRelease(button);
+		_wheel = (rotation, direction) => simulator.SimulateMouseWheel(rotation, direction);
+	}
 
 	public EmulationStatus KeyDown(int usage) =>
 		KeyMap.TryGetKeyCode(usage, out var code)
-			? Translate(_simulator.SimulateKeyPress(code))
+			? Translate(_keyPress(code))
 			: EmulationStatus.UnknownKey;
 
 	public EmulationStatus KeyUp(int usage) =>
 		KeyMap.TryGetKeyCode(usage, out var code)
-			? Translate(_simulator.SimulateKeyRelease(code))
+			? Translate(_keyRelease(code))
 			: EmulationStatus.UnknownKey;
 
 	public EmulationStatus MouseMove(float x, float y, bool absolute) => Translate(absolute
-		? _simulator.SimulateMouseMovement(ToShort(x), ToShort(y))
-		: _simulator.SimulateMouseMovementRelative(ToShort(x), ToShort(y)));
+		? _moveAbsolute(ToShort(x), ToShort(y))
+		: _moveRelative(ToShort(x), ToShort(y)));
 
 	public EmulationStatus SetMouseButton(InputMouseButton button, bool pressed)
 	{
@@ -38,7 +60,7 @@ internal sealed class SharpHookEmulator : IHookEmulator
 			return EmulationStatus.Unsupported;
 		}
 
-		return Translate(pressed ? _simulator.SimulateMousePress(target) : _simulator.SimulateMouseRelease(target));
+		return Translate(pressed ? _mousePress(target) : _mouseRelease(target));
 	}
 
 	public EmulationStatus Wheel(float deltaX, float deltaY)
@@ -47,7 +69,7 @@ internal sealed class SharpHookEmulator : IHookEmulator
 		var vertical = ToShort(deltaY);
 		if (vertical != 0)
 		{
-			var status = Translate(_simulator.SimulateMouseWheel(vertical, MouseWheelScrollDirection.Vertical));
+			var status = Translate(_wheel(vertical, MouseWheelScrollDirection.Vertical));
 			if (status != EmulationStatus.Success)
 			{
 				return status;
@@ -56,11 +78,11 @@ internal sealed class SharpHookEmulator : IHookEmulator
 
 		var horizontal = ToShort(-deltaX);
 		return horizontal != 0
-			? Translate(_simulator.SimulateMouseWheel(horizontal, MouseWheelScrollDirection.Horizontal))
+			? Translate(_wheel(horizontal, MouseWheelScrollDirection.Horizontal))
 			: EmulationStatus.Success;
 	}
 
-	public void Dispose() => (_simulator as IDisposable)?.Dispose();
+	public void Dispose() => _owner?.Dispose();
 
 	/// <summary>Результаты libuiohook, о которых известно что-то определённое; остальные — общий сбой.</summary>
 	internal static EmulationStatus Translate(UioHookResult result) => result switch
