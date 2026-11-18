@@ -1,5 +1,6 @@
 using SharpHook;
 using SharpHook.Data;
+using SharpHook.Simulation;
 using UniversalInput.Backends.GlobalHook.Mapping;
 using HookMouseButton = SharpHook.Data.MouseButton;
 using InputMouseButton = UniversalInput.Abstractions.Events.MouseButton;
@@ -15,8 +16,8 @@ internal sealed class SharpHookEmulator : IHookEmulator
 {
 	private const string ApplicationName = "UniversalInput";
 
-	// Тип, который возвращает EventSimulator.Create, здесь не называется: в документации SharpHook его имя не приведено,
-	// поэтому методы симулятора захвачены делегатами. Это заодно сужает зависимость от API SharpHook до одного места.
+	// Тип, который возвращает EventSimulator.Create, здесь не называется (в SharpHook 8 симулятор живёт в пространстве имён
+	// SharpHook.Simulation), а методы симулятора захвачены делегатами. Это заодно сужает зависимость от API SharpHook до одного места.
 	private readonly Func<KeyCode, UioHookResult> _keyPress;
 	private readonly Func<KeyCode, UioHookResult> _keyRelease;
 	private readonly Func<short, short, UioHookResult> _moveAbsolute;
