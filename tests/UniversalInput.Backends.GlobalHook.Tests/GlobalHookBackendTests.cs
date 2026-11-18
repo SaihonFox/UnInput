@@ -52,7 +52,7 @@ public class GlobalHookBackendTests
 		Assert.Equal(DeviceOrigin.Aggregate, device.Origin);
 		Assert.Equal(GlobalHookBackend.BackendId, device.BackendId);
 		Assert.True(hub.GetSupport(InputOperation.Observe, device.Id).IsSupported);
-		Assert.False(hub.GetSupport(InputOperation.Emulate, device.Id).IsSupported);
+		Assert.True(hub.GetSupport(InputOperation.Emulate, device.Id).IsSupported);
 		Assert.False(hub.GetSupport(InputOperation.Intercept, device.Id).IsSupported);
 		Assert.False(hub.GetSupport(InputOperation.DirectAccess, device.Id).IsSupported);
 	}

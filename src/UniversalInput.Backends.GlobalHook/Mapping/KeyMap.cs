@@ -189,8 +189,14 @@ internal static class KeyMap
 		KeyCode.VcYen,
 	];
 
+	private static readonly FrozenDictionary<int, KeyCode> KeyCodesByUsage =
+		Usages.ToFrozenDictionary(pair => pair.Value, pair => pair.Key);
+
 	/// <summary>Все переведённые клавиши.</summary>
 	public static IReadOnlyCollection<KeyCode> Mapped => Usages.Keys;
 
 	public static bool TryGetUsage(KeyCode keyCode, out int usage) => Usages.TryGetValue(keyCode, out usage);
+
+	/// <summary>Обратный перевод для эмуляции. Usage в таблице уникальны (это проверяет тест), поэтому обратное соответствие однозначно.</summary>
+	public static bool TryGetKeyCode(int usage, out KeyCode keyCode) => KeyCodesByUsage.TryGetValue(usage, out keyCode);
 }

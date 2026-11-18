@@ -66,4 +66,22 @@ public class KeyMapTests
 	{
 		Assert.False(KeyMap.TryGetUsage(code, out _));
 	}
+
+	[Fact]
+	public void EveryMappedKey_RoundTripsThroughTheReverseTable()
+	{
+		foreach (var code in KeyMap.Mapped)
+		{
+			KeyMap.TryGetUsage(code, out var usage);
+
+			Assert.True(KeyMap.TryGetKeyCode(usage, out var back), $"{code}: нет обратного перевода для 0x{usage:X2}.");
+			Assert.Equal(code, back);
+		}
+	}
+
+	[Theory]
+	[InlineData(0)]
+	[InlineData(0x03)]
+	[InlineData(0xFFFF)]
+	public void AUsageWithoutAKey_HasNoReverseMapping(int usage) => Assert.False(KeyMap.TryGetKeyCode(usage, out _));
 }

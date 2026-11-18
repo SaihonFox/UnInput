@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<Description>Backend UniversalInput для глобального перехвата клавиатуры и мыши (SharpHook): наблюдение за системным вводом.</Description>
+		<Description>Backend UniversalInput для глобального перехвата клавиатуры и мыши (SharpHook): наблюдение за системным вводом и эмуляция клавиатуры и мыши.</Description>
 		<RootNamespace>UniversalInput.Backends.GlobalHook</RootNamespace>
 	</PropertyGroup>
 	<ItemGroup>
