@@ -7,7 +7,7 @@ namespace UniversalInput.Testing.Mock;
 /// Управляемый backend для тестов библиотеки и приложений: устройства и события задаёт тест,
 /// проверка, запуск и остановка могут «ломаться» по команде. Возможности эмуляции и прямого доступа включаются свойствами.
 /// </summary>
-public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDeviceAccess, IHapticOutput
+public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDeviceAccess, IHapticOutput, IEventInterceptor
 {
 	private readonly ConcurrentQueue<InputEvent> _emulated = new();
 	private readonly ConcurrentDictionary<DeviceId, MockRawChannel> _channels = new();
@@ -43,6 +43,9 @@ public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDevice
 	/// <summary>Вибрация выключена по умолчанию: <see cref="Describe"/> её не объявляет, и роль Output у mock-backend не возникает сама.</summary>
 	public bool HapticsEnabled { get; set; }
 
+	/// <summary>Подавление событий; по умолчанию выключено, как у backend без хука с подавлением.</summary>
+	public bool InterceptEnabled { get; set; }
+
 	/// <summary>Устройства, которые появляются при запуске (первичное перечисление).</summary>
 	public IList<DeviceDescriptor> InitialDevices { get; } = [];
 
@@ -58,7 +61,13 @@ public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDevice
 	/// <summary>Эффекты, пришедшие через <see cref="IHapticOutput"/>.</summary>
 	public IReadOnlyCollection<(DeviceId Device, HapticEffect Effect)> Played => _played;
 
+	/// <summary>Правила подавления в порядке установки; <c>null</c> — отключение.</summary>
+	public IReadOnlyList<InterceptRule?> InterceptRules => [.. _interceptRules];
+
+	public void SetRule(InterceptRule? rule) => _interceptRules.Enqueue(rule);
+
 	private readonly ConcurrentQueue<(DeviceId Device, HapticEffect Effect)> _played = new();
+	private readonly ConcurrentQueue<InterceptRule?> _interceptRules = new();
 	private int _startCount;
 	private int _stopCount;
 	private int _disposeCount;
@@ -151,7 +160,8 @@ public sealed class MockInputBackend : IInputBackend, IInputEmulator, IRawDevice
 		// Решает запрошенная возможность, а не тип объекта: сам backend реализует их все сразу.
 		if ((typeof(TFeature) == typeof(IInputEmulator) && !EmulationEnabled)
 			|| (typeof(TFeature) == typeof(IRawDeviceAccess) && !RawAccessEnabled)
-			|| (typeof(TFeature) == typeof(IHapticOutput) && !HapticsEnabled))
+			|| (typeof(TFeature) == typeof(IHapticOutput) && !HapticsEnabled)
+			|| (typeof(TFeature) == typeof(IEventInterceptor) && !InterceptEnabled))
 		{
 			feature = null;
 		}

@@ -12,6 +12,12 @@ internal interface IHookSource : IAsyncDisposable
 	/// <summary>Хук остановился сам, уже после успешного запуска.</summary>
 	event Action<Exception>? Failed;
 
+	/// <summary>
+	/// Решает, подавить ли клавишу или кнопку мыши. Источник вызывает его на потоке хука до <see cref="Signal"/>
+	/// и только для нажатий и отпусканий. Подавление в libuiohook работает на Windows и macOS; на других платформах значение игнорируется.
+	/// </summary>
+	Func<HookSignal, bool>? ShouldSuppress { get; set; }
+
 	/// <summary>Возвращает управление, когда хук включён; бросает исключение, если запустить его не удалось.</summary>
 	ValueTask StartAsync(CancellationToken cancellationToken);
 }

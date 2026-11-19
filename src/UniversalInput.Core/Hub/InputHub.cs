@@ -222,6 +222,17 @@ public sealed class InputHub : IInputHub, IAsyncDisposable
 		await emulator.EmulateAsync(simulated, cancellationToken).ConfigureAwait(false);
 	}
 
+	public void SetInterceptRule(InterceptRule? rule, DeviceId device = default)
+	{
+		var runner = SelectRunner(InputOperation.Intercept, device);
+		if (!runner.TryGetFeature<IEventInterceptor>(out var interceptor))
+		{
+			throw InputException.Unsupported($"Backend '{runner.Id}' не поддерживает подавление событий.");
+		}
+
+		interceptor.SetRule(rule);
+	}
+
 	public async ValueTask PlayHapticAsync(DeviceId id, HapticEffect effect, CancellationToken cancellationToken = default)
 	{
 		if (id.IsNone)

@@ -31,7 +31,8 @@ public class GlobalHookBackendTests
 				sources.Add(source);
 				return source;
 			},
-			() => BackendProbe.Available);
+			() => BackendProbe.Available,
+			canSuppress: false);
 
 		return (TestInputHub.Create(backend), sources);
 	}

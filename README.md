@@ -13,7 +13,7 @@
 | `UniversalInput.Hosting` | `AddUniversalInput`, фоновая служба, настройки |
 | `UniversalInput.Testing` | `MockInputBackend`, вспомогательные средства для тестов |
 | `UniversalInput.Backends.Serial` | Backend COM-портов (System.IO.Ports): обнаружение опросом, сырые байты через прямой доступ |
-| `UniversalInput.Backends.GlobalHook` | Backend системного ввода через глобальный хук ([SharpHook](https://github.com/TolikPylypchuk/SharpHook)): клавиатура и мышь всей системы: наблюдение и эмуляция |
+| `UniversalInput.Backends.GlobalHook` | Backend системного ввода через глобальный хук ([SharpHook](https://github.com/TolikPylypchuk/SharpHook)): клавиатура и мышь всей системы: наблюдение, эмуляция и подавление событий (Windows, macOS) |
 | `UniversalInput.Backends.Hid` | Backend HID-устройств ([HidSharp](https://www.zer7.com/software/hidsharp)): перечисление с VID/PID/серийным номером, сырые отчёты через прямой доступ |
 | `UniversalInput.Backends.Sdl` | Backend геймпадов через нативную SDL3: кнопки, оси, датчики, вибрация |
 | `tests/*` | Тесты xUnit v3 (включая проверку правил зависимостей по файлам проектов) |
@@ -68,10 +68,11 @@ dotnet run --project samples/UniversalInput.Samples.ConsoleApp
 
 Один агрегатный device `globalhook:system` (вид `SystemWide`, источник `Aggregate`) на весь системный ввод: хук не сообщает, какая физическая клавиатура или мышь создала событие. Поэтому события несут флаг `Aggregate`, и Core прячет их как дубли, пока ту же категорию отдельно наблюдает другой backend.
 
-- Поддержаны `Observe` и `Emulate`. Перехват с подавлением событий в SharpHook есть только на Windows и macOS и здесь не подключён, поэтому честно объявлен неподдерживаемым.
+- Поддержаны `Observe`, `Emulate` и `Intercept`. Подавление событий в libuiohook есть только на Windows и macOS; на Linux `Intercept` честно объявлен неподдерживаемым.
 - Клавиши передаются кодом страницы клавиатуры USB HID. Клавиши без такого кода (мультимедиа, браузерные, часть японских и IME) не доставляются; список зашит в `KeyMap.Unmapped`, тест требует, чтобы каждый код SharpHook был либо переведён, либо в этом списке.
 - Мышь: только абсолютные координаты. Колесо: `DeltaY` > 0 — вверх, `DeltaX` > 0 — вправо; единицы берутся из ОС как есть и между ОС могут отличаться.
 - События, созданные программами (в том числе самим приложением), получают флаг `Simulated`; автоповтор клавиши — `Repeat`.
+- Подавление: `hub.SetInterceptRule(new InterceptRule(keys: [...], mouseButtons: [...]))`, `null` отключает. Правило проверяется на потоке хука (SharpHook `SuppressEvent`, только синхронно). Подавленное событие не доходит до других программ, но подписчикам хаба доставляется; события, созданные программой (`Simulated`, в том числе своя эмуляция), не подавляются. Клавиши без кода в `KeyMap` подавить нельзя. Правило действует и после перезапуска хука. Имя `SuppressEvent` взято из README SharpHook, компилятором не проверялось.
 - Эмуляция (`hub.EmulateAsync`) умеет `KeyPressed`/`KeyReleased`, `MouseMoved` (абсолютное или относительное — по флагу `Absolute`), `MouseButtonPressed`/`MouseButtonReleased` и `MouseWheel`; остальные виды событий отклоняются как неподдерживаемые. Устройство можно указать агрегатное или не указывать вовсе. Особенности:
   - модификаторы из события не применяются: Shift+A — это отдельные события для Shift и для A; автоповтор делает ОС;
   - кнопка мыши нажимается там, где сейчас указатель, координаты события игнорируются (иначе курсор «прыгал» бы в 0,0);
@@ -115,4 +116,4 @@ dotnet run --project samples/UniversalInput.Samples.ConsoleApp
 
 ## Ещё не сделано
 
-- Backend Native, Bluetooth, Android, iOS и сетевая часть; перехват (подавление событий) для GlobalHook; разбор HID-отчётов в события ввода; джойстики без раскладки геймпада в Sdl.
+- Backend Native, Bluetooth, Android, iOS и сетевая часть; перехват на Linux для GlobalHook (в libuiohook его нет); разбор HID-отчётов в события ввода; джойстики без раскладки геймпада в Sdl.

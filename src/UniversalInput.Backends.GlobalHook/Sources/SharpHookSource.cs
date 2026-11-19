@@ -22,6 +22,8 @@ internal sealed class SharpHookSource : IHookSource
 
 	public event Action<Exception>? Failed;
 
+	public Func<HookSignal, bool>? ShouldSuppress { get; set; }
+
 	public async ValueTask StartAsync(CancellationToken cancellationToken)
 	{
 		ObjectDisposedException.ThrowIf(_disposed != 0, this);
@@ -109,13 +111,21 @@ internal sealed class SharpHookSource : IHookSource
 			return;
 		}
 
-		Signal?.Invoke(new HookSignal
+		var signal = new HookSignal
 		{
 			Kind = kind,
 			Usage = usage,
 			Modifiers = ModifierMap.From(e.RawEvent.Mask),
 			Simulated = e.IsEventSimulated,
-		});
+		};
+
+		// Подавлять можно только синхронно в потоке хука: SimpleGlobalHook вызывает обработчики именно там.
+		if (ShouldSuppress?.Invoke(signal) == true)
+		{
+			e.SuppressEvent = true;
+		}
+
+		Signal?.Invoke(signal);
 	}
 
 	private void EmitMouse(HookSignalKind kind, MouseHookEventArgs e, bool withButton)
@@ -127,7 +137,7 @@ internal sealed class SharpHookSource : IHookSource
 			return;
 		}
 
-		Signal?.Invoke(new HookSignal
+		var signal = new HookSignal
 		{
 			Kind = kind,
 			Button = button,
@@ -135,7 +145,14 @@ internal sealed class SharpHookSource : IHookSource
 			Y = data.Y,
 			Modifiers = ModifierMap.From(e.RawEvent.Mask),
 			Simulated = e.IsEventSimulated,
-		});
+		};
+
+		if (withButton && ShouldSuppress?.Invoke(signal) == true)
+		{
+			e.SuppressEvent = true;
+		}
+
+		Signal?.Invoke(signal);
 	}
 
 	/// <summary>SharpHook: положительное вращение — вверх или влево; у нас Y &gt; 0 — вверх, X &gt; 0 — вправо. Единицы — как у libuiohook (по ОС различаются).</summary>

@@ -9,6 +9,8 @@ internal sealed class FakeHookSource : IHookSource
 
 	public event Action<Exception>? Failed;
 
+	public Func<HookSignal, bool>? ShouldSuppress { get; set; }
+
 	/// <summary>Если задано, <see cref="StartAsync"/> бросает это исключение.</summary>
 	public Exception? StartFailure { get; set; }
 
@@ -34,6 +36,14 @@ internal sealed class FakeHookSource : IHookSource
 	}
 
 	public void Raise(HookSignal signal) => Signal?.Invoke(signal);
+
+	/// <summary>Как поток хука: спрашивает, подавить ли событие, и только потом сообщает его.</summary>
+	public bool RaiseAndGetSuppressed(HookSignal signal)
+	{
+		var suppressed = ShouldSuppress?.Invoke(signal) == true;
+		Signal?.Invoke(signal);
+		return suppressed;
+	}
 
 	public void Fail(Exception error) => Failed?.Invoke(error);
 }

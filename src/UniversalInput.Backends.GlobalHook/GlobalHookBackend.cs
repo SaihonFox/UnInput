@@ -11,9 +11,14 @@ namespace UniversalInput.Backends.GlobalHook;
 /// создала событие. Поэтому у событий стоит флаг <see cref="InputEventFlags.Aggregate"/>, а Core прячет их как дубли,
 /// пока ту же категорию отдельно наблюдает backend устройств.
 /// <para>
-/// Умеет Observe и Emulate (клавиатура и мышь через симулятор SharpHook). Перехват с подавлением событий в SharpHook есть
-/// только на Windows и macOS и здесь ещё не подключён, поэтому честно объявлен неподдерживаемым. Клавиши без кода на странице
-/// клавиатуры HID не передаются и не эмулируются (см. <c>KeyMap</c>).
+/// Умеет Observe, Emulate (клавиатура и мышь через симулятор SharpHook) и Intercept — подавление клавиш и кнопок мыши
+/// по <see cref="InterceptRule"/>. Подавление в libuiohook есть только на Windows и macOS; на Linux оно честно объявлено
+/// неподдерживаемым. Клавиши без кода на странице клавиатуры HID не передаются, не эмулируются и не подавляются (см. <c>KeyMap</c>).
+/// <para>
+/// Подавленное событие не доходит до других программ, но подписчикам хаба доставляется. События, созданные программой
+/// (<see cref="InputEventFlags.Simulated"/>, в том числе собственной эмуляцией), не подавляются: иначе правило ломало бы эмуляцию.
+/// Правило проверяется прямо на потоке хука и не должно его задерживать.
+/// </para>
 /// <para>
 /// Эмуляция работает с агрегатным устройством (или без указания устройства). Модификаторы в событии не применяются:
 /// чтобы нажать Shift+A, пошлите отдельные события для Shift и A. Автоповтор клавиши делает сама ОС, пока клавиша зажата.
@@ -21,13 +26,15 @@ namespace UniversalInput.Backends.GlobalHook;
 /// </para>
 /// </para>
 /// </summary>
-public sealed class GlobalHookBackend : IInputBackend, IInputEmulator
+public sealed class GlobalHookBackend : IInputBackend, IInputEmulator, IEventInterceptor
 {
 	public const string BackendId = "globalhook";
 
 	private readonly Func<IHookSource> _createSource;
 	private readonly Func<BackendProbe> _probe;
 	private readonly Func<IHookEmulator> _createEmulator;
+	private readonly bool _canSuppress;
+	private InterceptRule? _rule;
 	private readonly HashSet<int> _pressed = [];
 	private readonly object _emulatorGate = new();
 	private IHookEmulator? _emulator;
@@ -46,13 +53,17 @@ public sealed class GlobalHookBackend : IInputBackend, IInputEmulator
 	/// Проверка платформы передаётся отдельно, чтобы тесты не зависели от ОС и графического сеанса, на которых идут.
 	/// </summary>
 	internal GlobalHookBackend(
-		Func<IHookSource> createSource, Func<BackendProbe> probe, Func<IHookEmulator>? createEmulator = null)
+		Func<IHookSource> createSource,
+		Func<BackendProbe> probe,
+		Func<IHookEmulator>? createEmulator = null,
+		bool? canSuppress = null)
 	{
 		ArgumentNullException.ThrowIfNull(createSource);
 		ArgumentNullException.ThrowIfNull(probe);
 		_createSource = createSource;
 		_probe = probe;
 		_createEmulator = createEmulator ?? (() => new SharpHookEmulator());
+		_canSuppress = canSuppress ?? (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS());
 	}
 
 	public string Id => BackendId;
@@ -81,6 +92,7 @@ public sealed class GlobalHookBackend : IInputBackend, IInputEmulator
 
 		source.Signal += OnSignal;
 		source.Failed += OnFailed;
+		source.ShouldSuppress = ShouldSuppress;
 		_source = source;
 
 		try
@@ -108,7 +120,43 @@ public sealed class GlobalHookBackend : IInputBackend, IInputEmulator
 		where TFeature : class, IBackendFeature
 	{
 		feature = (object)this as TFeature;
+		if (typeof(TFeature) == typeof(IEventInterceptor) && !_canSuppress)
+		{
+			feature = null;
+		}
+
 		return feature is not null;
+	}
+
+	/// <summary>Правило действует и после перезапуска хука; <c>null</c> отключает подавление.</summary>
+	public void SetRule(InterceptRule? rule)
+	{
+		if (!_canSuppress)
+		{
+			throw InputException.Unsupported("Подавление событий через глобальный хук работает только на Windows и macOS.");
+		}
+
+		Volatile.Write(ref _rule, rule);
+	}
+
+	private bool ShouldSuppress(HookSignal signal)
+	{
+		var rule = Volatile.Read(ref _rule);
+		if (rule is null || signal.Simulated)
+		{
+			return false;
+		}
+
+		var candidate = signal.Kind switch
+		{
+			HookSignalKind.KeyDown => new InputEvent { Kind = InputEventKind.KeyPressed, Int0 = signal.Usage },
+			HookSignalKind.KeyUp => new InputEvent { Kind = InputEventKind.KeyReleased, Int0 = signal.Usage },
+			HookSignalKind.MouseDown => new InputEvent { Kind = InputEventKind.MouseButtonPressed, Int0 = (int)signal.Button },
+			HookSignalKind.MouseUp => new InputEvent { Kind = InputEventKind.MouseButtonReleased, Int0 = (int)signal.Button },
+			_ => default,
+		};
+
+		return rule.Matches(in candidate);
 	}
 
 	/// <summary>
@@ -176,7 +224,7 @@ public sealed class GlobalHookBackend : IInputBackend, IInputEmulator
 		}
 	}
 
-	private static DeviceDescriptor Describe() => new()
+	private DeviceDescriptor Describe() => new()
 	{
 		Key = new DeviceKey("globalhook:system"),
 		Name = "Системный ввод (глобальный хук)",
@@ -191,7 +239,9 @@ public sealed class GlobalHookBackend : IInputBackend, IInputEmulator
 			[InputOperation.Enumerate] = OperationSupport.Supported,
 			[InputOperation.Observe] = OperationSupport.Supported,
 			[InputOperation.Emulate] = OperationSupport.Supported,
-			[InputOperation.Intercept] = OperationSupport.Unsupported("Перехват с подавлением событий в этом backend пока не подключён."),
+			[InputOperation.Intercept] = _canSuppress
+				? OperationSupport.Supported
+				: OperationSupport.Unsupported("Подавление событий в libuiohook работает только на Windows и macOS."),
 			[InputOperation.DirectAccess] = OperationSupport.Unsupported("Хук не даёт доступа к сырым данным устройства."),
 		},
 		Properties = new Dictionary<string, string> { ["library"] = "SharpHook" },
@@ -215,6 +265,7 @@ public sealed class GlobalHookBackend : IInputBackend, IInputEmulator
 
 		source.Signal -= OnSignal;
 		source.Failed -= OnFailed;
+		source.ShouldSuppress = null;
 
 		var device = _device;
 		_device = default;

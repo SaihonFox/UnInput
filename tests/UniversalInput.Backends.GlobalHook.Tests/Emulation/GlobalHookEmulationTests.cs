@@ -18,7 +18,8 @@ public class GlobalHookEmulationTests
 				var emulator = new FakeHookEmulator();
 				emulators.Add(emulator);
 				return emulator;
-			});
+			},
+			canSuppress: false);
 
 		return (TestInputHub.Create(backend), backend, emulators);
 	}

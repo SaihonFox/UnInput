@@ -18,6 +18,14 @@ public interface IInputHub
 	/// <exception cref="InputException">Эмуляция недоступна.</exception>
 	ValueTask EmulateAsync(InputEvent inputEvent, CancellationToken cancellationToken = default);
 
+	/// <summary>
+	/// Задаёт правило подавления событий через backend, который владеет ролью <see cref="InputOperation.Intercept"/>
+	/// (для устройства или, если оно не указано, через первый подходящий по приоритету); <c>null</c> отключает подавление.
+	/// Подавлённое событие не доходит до других программ, но подписчикам хаба всё равно доставляется.
+	/// </summary>
+	/// <exception cref="InputException">Подавление недоступно (платформа или backend его не поддерживает).</exception>
+	void SetInterceptRule(InterceptRule? rule, DeviceId device = default);
+
 	/// <exception cref="InputException">Устройство недоступно, занято или не поддерживает прямой доступ.</exception>
 	/// <summary>
 	/// Запускает вибрацию на устройстве через backend, который владеет ролью <see cref="InputOperation.Output"/> для этого устройства.
