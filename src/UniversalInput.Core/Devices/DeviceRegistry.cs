@@ -18,6 +18,7 @@ internal sealed class DeviceRegistry
 	[
 		InputOperation.Observe,
 		InputOperation.Emulate,
+		InputOperation.Intercept,
 		InputOperation.DirectAccess,
 		InputOperation.Output,
 	];
