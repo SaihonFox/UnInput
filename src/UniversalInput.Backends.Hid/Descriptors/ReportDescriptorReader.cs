@@ -2,8 +2,7 @@ namespace UniversalInput.Backends.Hid.Descriptors;
 
 /// <summary>
 /// Читает из дескриптора отчётов HID только то, что нужно для классификации: страницу и применение каждой
-/// коллекции верхнего уровня типа Application. Поля отчётов и их размеры не разбираются, поэтому
-/// событий ввода из отчётов этот backend не строит.
+/// коллекции верхнего уровня типа Application. Поля отчётов разбирает <see cref="ReportLayoutReader"/>.
 /// </summary>
 internal static class ReportDescriptorReader
 {

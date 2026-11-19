@@ -40,6 +40,15 @@ internal sealed class FakeHidPlatform : IHidPlatform
 	public static HidDeviceInfo Keyboard(string path, string? product = "Keyboard", string? serial = "SN1") => new(
 		path, 0x046D, 0xC31C, 0x0100, "Logitech", product, serial, 8, [new HidUsage(0x01, 0x06)]);
 
+	public static HidDeviceInfo KeyboardWithDescriptor(string path) => new(
+		path, 0x046D, 0xC31C, 0x0100, "Logitech", "Keyboard", "SN1", 9, [new HidUsage(0x01, 0x06)], HidTestDescriptors.BootKeyboard);
+
+	public static HidDeviceInfo MouseWithDescriptor(string path) => new(
+		path, 0x046D, 0xC077, 0x0100, "Logitech", "Mouse", "SN2", 5, [new HidUsage(0x01, 0x02)], HidTestDescriptors.WheelMouse);
+
+	public static HidDeviceInfo GamepadWithDescriptor(string path) => new(
+		path, 0x054C, 0x09CC, 0x0100, "Sony", "Pad", null, 2, [new HidUsage(0x01, 0x05)], HidTestDescriptors.Gamepad);
+
 	public static HidDeviceInfo Vendor(string path) => new(
 		path, 0x1234, 0x0001, 0x0001, null, null, null, 64, [new HidUsage(0xFF00, 0x01)]);
 

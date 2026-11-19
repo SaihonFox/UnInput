@@ -1,7 +1,9 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Channels;
 using UniversalInput.Backends.Hid.Channels;
+using UniversalInput.Backends.Hid.Decoding;
 using UniversalInput.Backends.Hid.Discovery;
+using UniversalInput.Backends.Hid.Observation;
 using UniversalInput.Backends.Hid.Options;
 using UniversalInput.Backends.Hid.Platform;
 
@@ -10,8 +12,9 @@ namespace UniversalInput.Backends.Hid;
 /// <summary>
 /// Backend HID-устройств (HidSharp). Каждый HID-интерфейс — отдельное устройство с VID, PID и серийным номером,
 /// по которым Core сопоставляет его с тем же прибором из других backend. Данные отдаются сырыми отчётами через
-/// <see cref="IRawDeviceAccess"/>; разбор отчётов в события ввода не выполняется, поэтому Observe честно объявлен
-/// неподдерживаемым. Шина подключения HidSharp не сообщает (<see cref="DeviceBus.Unknown"/>), и сопоставление
+/// <see cref="IRawDeviceAccess"/>. Если включить <see cref="HidBackendOptions.ObserveInputDevices"/>, отчёты клавиатур и мышей
+/// ещё и разбираются в события ввода (Observe); иначе, а также для устройств другого класса или тех, которые не удалось
+/// открыть, Observe честно объявлен неподдерживаемым с причиной. Шина подключения HidSharp не сообщает (<see cref="DeviceBus.Unknown"/>), и сопоставление
 /// с устройствами, у которых шина известна, из-за этого не происходит.
 /// </summary>
 public sealed class HidBackend : IInputBackend, IRawDeviceAccess
@@ -23,6 +26,7 @@ public sealed class HidBackend : IInputBackend, IRawDeviceAccess
 	private readonly object _gate = new();
 	private readonly Dictionary<string, DeviceId> _ids = new(StringComparer.Ordinal);
 	private readonly Dictionary<DeviceId, HidDeviceInfo> _infos = new();
+	private readonly Dictionary<DeviceId, HidObserver> _observers = new();
 	private CancellationTokenSource? _cts;
 	private Task _loop = Task.CompletedTask;
 	private Timer? _timer;
@@ -125,11 +129,16 @@ public sealed class HidBackend : IInputBackend, IRawDeviceAccess
 
 		cts?.Dispose();
 
+		List<HidObserver> observers;
 		lock (_gate)
 		{
 			_ids.Clear();
 			_infos.Clear();
+			observers = [.. _observers.Values];
+			_observers.Clear();
 		}
+
+		await Task.WhenAll(observers.Select(observer => observer.StopAsync())).ConfigureAwait(false);
 	}
 
 	public bool TryGetFeature<TFeature>([NotNullWhen(true)] out TFeature? feature)
@@ -143,14 +152,22 @@ public sealed class HidBackend : IInputBackend, IRawDeviceAccess
 		DeviceId id, RawAccessMode mode, CancellationToken cancellationToken)
 	{
 		HidDeviceInfo? info;
+		bool observed;
 		lock (_gate)
 		{
 			_infos.TryGetValue(id, out info);
+			observed = _observers.ContainsKey(id);
 		}
 
 		if (info is null)
 		{
 			throw InputException.DeviceUnavailable($"HID-устройство {id} не найдено или отключено.");
+		}
+
+		if (observed)
+		{
+			throw InputException.DeviceBusy(
+				$"HID-устройство {info.Path} читается для наблюдения за вводом: отключите HidBackendOptions.ObserveInputDevices, чтобы открыть его для прямого доступа.");
 		}
 
 		try
@@ -225,6 +242,7 @@ public sealed class HidBackend : IInputBackend, IRawDeviceAccess
 			.ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
 
 		List<DeviceId> removed = [];
+		List<HidObserver> stopped = [];
 		lock (_gate)
 		{
 			foreach (var path in _ids.Keys.Where(p => !current.ContainsKey(p)).ToList())
@@ -233,7 +251,16 @@ public sealed class HidBackend : IInputBackend, IRawDeviceAccess
 				_ids.Remove(path);
 				_infos.Remove(id);
 				removed.Add(id);
+				if (_observers.Remove(id, out var observer))
+				{
+					stopped.Add(observer);
+				}
 			}
+		}
+
+		foreach (var observer in stopped)
+		{
+			_ = observer.StopAsync();
 		}
 
 		foreach (var id in removed)
@@ -254,16 +281,66 @@ public sealed class HidBackend : IInputBackend, IRawDeviceAccess
 				continue;
 			}
 
-			var id = context.AddDevice(Describe(info));
+			var (observe, connection, decoder) = PrepareObservation(info);
+			var id = context.AddDevice(Describe(info, observe));
+			HidObserver? newObserver = null;
+			if (connection is not null && decoder is not null)
+			{
+				newObserver = new HidObserver(connection, decoder, id, context, Math.Max(Math.Max(info.MaxInputReportLength, decoder.MaxReportLength), 64));
+			}
+
 			lock (_gate)
 			{
 				_ids[path] = id;
 				_infos[id] = info;
+				if (newObserver is not null)
+				{
+					_observers[id] = newObserver;
+				}
 			}
+
+			newObserver?.Start();
 		}
 	}
 
-	private static DeviceDescriptor Describe(HidDeviceInfo info)
+	/// <summary>
+	/// Решает, можно ли наблюдать устройство: опция включена, в дескрипторе есть клавиатура или мышь, и устройство открылось.
+	/// Открытие делается заранее, чтобы объявлять Observe поддерживаемым только тогда, когда он действительно заработает.
+	/// </summary>
+	private (OperationSupport Observe, IHidConnection? Connection, HidInputDecoder? Decoder) PrepareObservation(HidDeviceInfo info)
+	{
+		if (!_options.ObserveInputDevices)
+		{
+			return (OperationSupport.Unsupported(
+				"Чтение входных отчётов выключено: включите HidBackendOptions.ObserveInputDevices; иначе отчёты доступны только сырыми через прямой доступ."), null, null);
+		}
+
+		if (info.ReportDescriptor is null)
+		{
+			return (OperationSupport.Unsupported("Дескриптор отчётов устройства недоступен, разобрать отчёты нельзя."), null, null);
+		}
+
+		var decoder = HidInputDecoder.TryCreate(info.ReportDescriptor);
+		if (decoder is null)
+		{
+			return (OperationSupport.Unsupported(
+				"В дескрипторе нет клавиатуры или мыши, отчёты которых backend умеет разбирать в события ввода."), null, null);
+		}
+
+		try
+		{
+			return (OperationSupport.Supported, _platform.Open(info.Path), decoder);
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InputException)
+		{
+			return (new OperationSupport(
+				SupportState.Unsupported,
+				$"Устройство не удалось открыть для чтения отчётов: {ex.Message}",
+				PermissionHint()), null, null);
+		}
+	}
+
+	private static DeviceDescriptor Describe(HidDeviceInfo info, OperationSupport observe)
 	{
 		Dictionary<string, string> properties = new()
 		{
@@ -299,8 +376,7 @@ public sealed class HidBackend : IInputBackend, IRawDeviceAccess
 			{
 				[InputOperation.Enumerate] = OperationSupport.Supported,
 				[InputOperation.DirectAccess] = OperationSupport.Supported,
-				[InputOperation.Observe] = OperationSupport.Unsupported(
-					"Backend отдаёт сырые HID-отчёты через прямой доступ; разбор отчётов в события ввода не реализован."),
+				[InputOperation.Observe] = observe,
 				[InputOperation.Emulate] = OperationSupport.Unsupported("Эмуляция ввода через HID-устройство не поддерживается."),
 			},
 			Properties = properties,

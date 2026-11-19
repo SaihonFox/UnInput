@@ -41,6 +41,7 @@ internal sealed class HidSharpPlatform : IHidPlatform
 	{
 		try
 		{
+			var descriptor = Try(device.GetRawReportDescriptor);
 			return new HidDeviceInfo(
 				device.DevicePath,
 				device.VendorID,
@@ -50,7 +51,8 @@ internal sealed class HidSharpPlatform : IHidPlatform
 				Try(device.GetProductName),
 				Try(device.GetSerialNumber),
 				Try(device.GetMaxInputReportLength, 0),
-				Try(() => ReportDescriptorReader.ReadApplicationUsages(device.GetRawReportDescriptor())) ?? []);
+				descriptor is null ? [] : ReportDescriptorReader.ReadApplicationUsages(descriptor),
+				descriptor);
 		}
 		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
 		{
