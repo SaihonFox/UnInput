@@ -7,8 +7,10 @@ internal sealed class FakeSdlRuntime : ISdlRuntime
 {
 	private readonly BlockingCollection<SdlEvent> _events = new();
 	private readonly Dictionary<uint, SdlGamepadInfo> _gamepads = [];
+	private readonly Dictionary<uint, SdlJoystickInfo> _joysticks = [];
 	private readonly object _gate = new();
 	private readonly List<uint> _closed = [];
+	private readonly List<uint> _closedJoysticks = [];
 	private readonly List<(uint Instance, ushort Low, ushort High, uint Milliseconds)> _rumbles = [];
 	private Exception? _waitFailure;
 
@@ -49,6 +51,33 @@ internal sealed class FakeSdlRuntime : ISdlRuntime
 			{
 				return [.. _rumbles];
 			}
+		}
+	}
+
+	/// <summary>Джойстики, которые <see cref="OpenJoystick"/> «не смог открыть».</summary>
+	public HashSet<uint> JoystickOpenFailures { get; } = [];
+
+	public IReadOnlyList<uint> ClosedJoysticks
+	{
+		get
+		{
+			lock (_gate)
+			{
+				return [.. _closedJoysticks];
+			}
+		}
+	}
+
+	public static SdlJoystickInfo Stick(
+		uint instance, string name = "Stick", int axes = 3, int buttons = 12, int hats = 1, string? serial = "J1") =>
+		new(instance, name, 0x044F, 0xB10A, serial, "/dev/input/js" + instance, axes, buttons, hats);
+
+	/// <summary>Подключённый джойстик без раскладки: виден при первичном перечислении и открывается по запросу.</summary>
+	public void Plug(SdlJoystickInfo info)
+	{
+		lock (_gate)
+		{
+			_joysticks[info.InstanceId] = info;
 		}
 	}
 
@@ -93,6 +122,33 @@ internal sealed class FakeSdlRuntime : ISdlRuntime
 		lock (_gate)
 		{
 			return [.. _gamepads.Keys];
+		}
+	}
+
+	public IReadOnlyList<uint> GetRawJoystickIds()
+	{
+		LoopThreads.Add(Environment.CurrentManagedThreadId);
+		lock (_gate)
+		{
+			return [.. _joysticks.Keys];
+		}
+	}
+
+	public SdlJoystickInfo? OpenJoystick(uint instanceId)
+	{
+		LoopThreads.Add(Environment.CurrentManagedThreadId);
+		lock (_gate)
+		{
+			return !JoystickOpenFailures.Contains(instanceId) && _joysticks.TryGetValue(instanceId, out var info) ? info : null;
+		}
+	}
+
+	public void CloseJoystick(uint instanceId)
+	{
+		LoopThreads.Add(Environment.CurrentManagedThreadId);
+		lock (_gate)
+		{
+			_closedJoysticks.Add(instanceId);
 		}
 	}
 

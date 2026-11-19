@@ -22,6 +22,30 @@ public class SdlEventParserTests
 	}
 
 	[Fact]
+	public void JoystickEvents_AreParsedWithTheirOwnTypes()
+	{
+		Assert.Equal(SdlEvent.JoystickAdded(7), SdlEventParser.Parse(Raw(SdlEventParser.TypeJoystickAdded, 7)));
+		Assert.Equal(SdlEvent.JoystickRemoved(9), SdlEventParser.Parse(Raw(SdlEventParser.TypeJoystickRemoved, 9)));
+
+		var down = Raw(SdlEventParser.TypeJoystickButtonDown, 3);
+		down[20] = 11;
+		var up = Raw(SdlEventParser.TypeJoystickButtonUp, 3);
+		up[20] = 11;
+		Assert.Equal(SdlEvent.JoystickButtonDown(3, 11), SdlEventParser.Parse(down));
+		Assert.Equal(SdlEvent.JoystickButtonUp(3, 11), SdlEventParser.Parse(up));
+
+		var axis = Raw(SdlEventParser.TypeJoystickAxisMotion, 3);
+		axis[20] = 2;
+		BinaryPrimitives.WriteInt16LittleEndian(axis.AsSpan(24), -12345);
+		Assert.Equal(SdlEvent.JoystickAxis(3, 2, -12345), SdlEventParser.Parse(axis));
+
+		var hat = Raw(SdlEventParser.TypeJoystickHatMotion, 3);
+		hat[20] = 1;
+		hat[21] = 0b0110;
+		Assert.Equal(SdlEvent.JoystickHat(3, 1, 0b0110), SdlEventParser.Parse(hat));
+	}
+
+	[Fact]
 	public void ButtonEvents_CarryTheButtonNumber_AndTheDirectionComesFromTheType()
 	{
 		var down = Raw(SdlEventParser.TypeButtonDown, 3);

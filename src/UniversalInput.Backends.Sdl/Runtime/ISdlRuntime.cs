@@ -17,6 +17,14 @@ internal interface ISdlRuntime : IDisposable
 
 	void CloseGamepad(uint instanceId);
 
+	/// <summary>Идентификаторы джойстиков, у которых нет раскладки геймпада (геймпады из <see cref="GetGamepadIds"/> сюда не входят).</summary>
+	IReadOnlyList<uint> GetRawJoystickIds();
+
+	/// <summary>Открывает джойстик без раскладки геймпада; <c>null</c>, если он исчез или у него есть раскладка (его ведёт геймпадный путь).</summary>
+	SdlJoystickInfo? OpenJoystick(uint instanceId);
+
+	void CloseJoystick(uint instanceId);
+
 	/// <summary>Ждёт событие не дольше <paramref name="timeout"/>; <c>false</c> — событий не было.</summary>
 	bool TryWaitEvent(TimeSpan timeout, out SdlEvent sdlEvent);
 

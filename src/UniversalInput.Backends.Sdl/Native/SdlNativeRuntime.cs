@@ -15,6 +15,7 @@ internal sealed unsafe class SdlNativeRuntime : ISdlRuntime
 	private readonly string? _libraryPath;
 	private readonly object _gate = new();
 	private readonly Dictionary<uint, nint> _gamepads = new();
+	private readonly Dictionary<uint, nint> _joysticks = new();
 	private SdlApi? _api;
 	private bool _initialized;
 
@@ -74,6 +75,82 @@ internal sealed unsafe class SdlNativeRuntime : ISdlRuntime
 		{
 			api.Free(ids);
 		}
+	}
+
+	public IReadOnlyList<uint> GetRawJoystickIds()
+	{
+		var api = Api;
+		var count = 0;
+		var ids = api.GetJoysticks(&count);
+		if (ids == null)
+		{
+			return [];
+		}
+
+		try
+		{
+			List<uint> result = [];
+			for (var i = 0; i < count; i++)
+			{
+				if (api.IsGamepad(ids[i]) == 0)
+				{
+					result.Add(ids[i]);
+				}
+			}
+
+			return result;
+		}
+		finally
+		{
+			api.Free(ids);
+		}
+	}
+
+	public SdlJoystickInfo? OpenJoystick(uint instanceId)
+	{
+		var api = Api;
+
+		// Устройство с раскладкой ведёт геймпадный путь: открывать его вторым способом не нужно.
+		if (api.IsGamepad(instanceId) != 0)
+		{
+			return null;
+		}
+
+		var handle = api.OpenJoystick(instanceId);
+		if (handle == 0)
+		{
+			return null;
+		}
+
+		lock (_gate)
+		{
+			_joysticks[instanceId] = handle;
+		}
+
+		return new SdlJoystickInfo(
+			instanceId,
+			Text(api.GetJoystickName(handle)) ?? "Joystick",
+			api.GetJoystickVendor(handle),
+			api.GetJoystickProduct(handle),
+			Text(api.GetJoystickSerial(handle)),
+			Text(api.GetJoystickPath(handle)),
+			Math.Max(api.GetNumJoystickAxes(handle), 0),
+			Math.Max(api.GetNumJoystickButtons(handle), 0),
+			Math.Max(api.GetNumJoystickHats(handle), 0));
+	}
+
+	public void CloseJoystick(uint instanceId)
+	{
+		nint handle;
+		lock (_gate)
+		{
+			if (!_joysticks.Remove(instanceId, out handle))
+			{
+				return;
+			}
+		}
+
+		Api.CloseJoystick(handle);
 	}
 
 	public SdlGamepadInfo? OpenGamepad(uint instanceId, bool enableSensors)
@@ -195,6 +272,18 @@ internal sealed unsafe class SdlNativeRuntime : ISdlRuntime
 		foreach (var handle in handles)
 		{
 			api.CloseGamepad(handle);
+		}
+
+		nint[] joysticks;
+		lock (_gate)
+		{
+			joysticks = [.. _joysticks.Values];
+			_joysticks.Clear();
+		}
+
+		foreach (var handle in joysticks)
+		{
+			api.CloseJoystick(handle);
 		}
 
 		if (_initialized)

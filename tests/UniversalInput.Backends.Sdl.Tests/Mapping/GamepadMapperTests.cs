@@ -90,4 +90,23 @@ public class GamepadMapperTests
 	{
 		Assert.Null(GamepadMapper.Sensor(sdl));
 	}
+
+	[Theory]
+	[InlineData(0, 0f)]
+	[InlineData(32767, 1f)]
+	[InlineData(-32768, -1f)]
+	public void RawJoystickAxes_AreNormalizedLikeSticks(short raw, float expected) =>
+		Assert.Equal(expected, GamepadMapper.NormalizeRaw(raw));
+
+	[Theory]
+	[InlineData(0, 0f, 0f)]
+	[InlineData(1, 0f, -1f)]
+	[InlineData(2, 1f, 0f)]
+	[InlineData(4, 0f, 1f)]
+	[InlineData(8, -1f, 0f)]
+	[InlineData(3, 1f, -1f)]
+	[InlineData(12, -1f, 1f)]
+	[InlineData(5, 0f, 0f)]
+	public void AHat_BecomesTwoAxes_UpIsNegative(int mask, float x, float y) =>
+		Assert.Equal((x, y), GamepadMapper.Hat(mask));
 }

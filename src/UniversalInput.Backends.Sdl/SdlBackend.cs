@@ -8,8 +8,10 @@ namespace UniversalInput.Backends.Sdl;
 
 /// <summary>
 /// Backend геймпадов через нативную библиотеку SDL3. Поддерживает наблюдение (кнопки, оси, при включении — акселерометр
-/// и гироскоп) и вибрацию (<see cref="IHapticOutput"/>). Устройства без раскладки геймпада в базе SDL, а также
-/// дополнительные кнопки (MISC, лепестки, тачпад) не показываются. Приложение, которое само читает события SDL,
+/// и гироскоп) и вибрацию (<see cref="IHapticOutput"/>). Дополнительные кнопки геймпада (MISC, лепестки, тачпад) не передаются.
+/// Устройства без раскладки геймпада в базе SDL (штурвалы, педали, рули) показываются только при
+/// <see cref="SdlBackendOptions.IncludeUnmappedJoysticks"/>: как <c>Kind = Joystick</c>, с номерами кнопок и осей «как у устройства»
+/// (hat — две оси после настоящих), без вибрации. Приложение, которое само читает события SDL,
 /// не должно работать одновременно с этим backend: события получит тот, кто опросит очередь первым.
 /// </summary>
 public sealed class SdlBackend : IInputBackend, IHapticOutput
@@ -22,6 +24,7 @@ public sealed class SdlBackend : IInputBackend, IHapticOutput
 	private readonly object _gate = new();
 	private readonly Dictionary<uint, DeviceId> _devices = new();
 	private readonly Dictionary<DeviceId, uint> _instances = new();
+	private readonly Dictionary<uint, (DeviceId Id, SdlJoystickInfo Info)> _joysticks = new();
 	private ISdlRuntime? _runtime;
 	private CancellationTokenSource? _stop;
 	private Task _finished = Task.CompletedTask;
@@ -171,6 +174,14 @@ public sealed class SdlBackend : IInputBackend, IHapticOutput
 				AddGamepad(runtime, context, instance);
 			}
 
+			if (_options.IncludeUnmappedJoysticks)
+			{
+				foreach (var instance in runtime.GetRawJoystickIds())
+				{
+					AddJoystick(runtime, context, instance);
+				}
+			}
+
 			ready.TrySetResult();
 
 			while (!stop.IsCancellationRequested)
@@ -196,6 +207,7 @@ public sealed class SdlBackend : IInputBackend, IHapticOutput
 				_runtime = null;
 				_devices.Clear();
 				_instances.Clear();
+				_joysticks.Clear();
 			}
 
 			try
@@ -239,6 +251,44 @@ public sealed class SdlBackend : IInputBackend, IHapticOutput
 
 				break;
 
+			case SdlEventKind.JoystickAdded when _options.IncludeUnmappedJoysticks:
+				AddJoystick(runtime, context, sdlEvent.Which);
+				break;
+
+			case SdlEventKind.JoystickRemoved:
+				RemoveJoystick(runtime, context, sdlEvent.Which);
+				break;
+
+			case SdlEventKind.JoystickButtonDown or SdlEventKind.JoystickButtonUp:
+				if (FindJoystick(sdlEvent.Which) is { } joystickForButton)
+				{
+					Write(context, sdlEvent.Kind == SdlEventKind.JoystickButtonDown
+						? InputEvent.JoystickDown(joystickForButton.Id, sdlEvent.Code)
+						: InputEvent.JoystickUp(joystickForButton.Id, sdlEvent.Code));
+				}
+
+				break;
+
+			case SdlEventKind.JoystickAxis:
+				if (FindJoystick(sdlEvent.Which) is { } joystickForAxis)
+				{
+					Write(context, InputEvent.Axis(joystickForAxis.Id, sdlEvent.Code, GamepadMapper.NormalizeRaw(sdlEvent.Value)));
+				}
+
+				break;
+
+			case SdlEventKind.JoystickHat:
+				if (FindJoystick(sdlEvent.Which) is { } joystickForHat && sdlEvent.Code < joystickForHat.Info.Hats)
+				{
+					// Hat — две оси после настоящих: так он не смешивается с номерами кнопок и осей устройства.
+					var (x, y) = GamepadMapper.Hat(sdlEvent.Value);
+					var first = joystickForHat.Info.Axes + (2 * sdlEvent.Code);
+					Write(context, InputEvent.Axis(joystickForHat.Id, first, x));
+					Write(context, InputEvent.Axis(joystickForHat.Id, first + 1, y));
+				}
+
+				break;
+
 			case SdlEventKind.Sensor:
 				if (Find(sdlEvent.Which) is { } padForSensor && GamepadMapper.Sensor(sdlEvent.Code) is { } sensor)
 				{
@@ -257,6 +307,54 @@ public sealed class SdlBackend : IInputBackend, IHapticOutput
 		{
 			return _devices.TryGetValue(instance, out var id) ? id : null;
 		}
+	}
+
+	private (DeviceId Id, SdlJoystickInfo Info)? FindJoystick(uint instance)
+	{
+		lock (_gate)
+		{
+			return _joysticks.TryGetValue(instance, out var entry) ? entry : null;
+		}
+	}
+
+	private void AddJoystick(ISdlRuntime runtime, IBackendContext context, uint instance)
+	{
+		lock (_gate)
+		{
+			if (_joysticks.ContainsKey(instance) || _devices.ContainsKey(instance))
+			{
+				return;
+			}
+		}
+
+		// SDL присылает «добавлен» и для геймпадов, и для уже подключённых устройств; геймпады среда не открывает (null).
+		if (runtime.OpenJoystick(instance) is not { } info)
+		{
+			return;
+		}
+
+		var id = context.AddDevice(Describe(info));
+		lock (_gate)
+		{
+			_joysticks[instance] = (id, info);
+		}
+	}
+
+	private void RemoveJoystick(ISdlRuntime runtime, IBackendContext context, uint instance)
+	{
+		DeviceId id;
+		lock (_gate)
+		{
+			if (!_joysticks.Remove(instance, out var entry))
+			{
+				return;
+			}
+
+			id = entry.Id;
+		}
+
+		runtime.CloseJoystick(instance);
+		context.RemoveDevice(id);
 	}
 
 	private void AddGamepad(ISdlRuntime runtime, IBackendContext context, uint instance)
@@ -354,6 +452,62 @@ public sealed class SdlBackend : IInputBackend, IHapticOutput
 				// SDL не сообщает заранее, вибрирует ли конкретная модель; если нет, PlayHapticAsync вернёт Unsupported с причиной SDL.
 				[InputOperation.Output] = OperationSupport.Supported,
 				[InputOperation.Emulate] = OperationSupport.Unsupported("Backend не создаёт виртуальные геймпады."),
+				[InputOperation.DirectAccess] = OperationSupport.Unsupported("SDL не даёт сырого доступа к отчётам; для этого есть backend Hid."),
+			},
+			Properties = properties,
+		};
+	}
+
+	internal static string KeyOf(SdlJoystickInfo info) =>
+		!string.IsNullOrEmpty(info.Path)
+			? "sdl:" + info.Path
+			: $"sdl:{info.VendorId:X4}:{info.ProductId:X4}:{(string.IsNullOrEmpty(info.Serial) ? "id" + info.InstanceId : info.Serial)}";
+
+	private static DeviceDescriptor Describe(SdlJoystickInfo info)
+	{
+		var capabilities = InputCapabilities.None;
+		if (info.Buttons > 0)
+		{
+			capabilities |= InputCapabilities.GamepadButtons;
+		}
+
+		if (info.Axes + info.Hats > 0)
+		{
+			capabilities |= InputCapabilities.Axes;
+		}
+
+		Dictionary<string, string> properties = new()
+		{
+			["library"] = "SDL3",
+			["mapping"] = "none",
+			["axes"] = info.Axes.ToString(System.Globalization.CultureInfo.InvariantCulture),
+			["buttons"] = info.Buttons.ToString(System.Globalization.CultureInfo.InvariantCulture),
+			["hats"] = info.Hats.ToString(System.Globalization.CultureInfo.InvariantCulture),
+		};
+		if (!string.IsNullOrEmpty(info.Path))
+		{
+			properties["path"] = info.Path;
+		}
+
+		return new DeviceDescriptor
+		{
+			Key = new DeviceKey(KeyOf(info)),
+			Name = info.Name,
+			Kind = InputDeviceKind.Joystick,
+			Origin = DeviceOrigin.Physical,
+			Bus = DeviceBus.Unknown,
+			Identity = new DeviceIdentity(
+				ToUShort(info.VendorId),
+				ToUShort(info.ProductId),
+				string.IsNullOrEmpty(info.Serial) ? null : info.Serial,
+				info.Path),
+			Capabilities = capabilities,
+			Operations = new Dictionary<InputOperation, OperationSupport>
+			{
+				[InputOperation.Enumerate] = OperationSupport.Supported,
+				[InputOperation.Observe] = OperationSupport.Supported,
+				[InputOperation.Output] = OperationSupport.Unsupported("Вибрация доступна только у устройств с раскладкой геймпада."),
+				[InputOperation.Emulate] = OperationSupport.Unsupported("Backend не создаёт виртуальные джойстики."),
 				[InputOperation.DirectAccess] = OperationSupport.Unsupported("SDL не даёт сырого доступа к отчётам; для этого есть backend Hid."),
 			},
 			Properties = properties,

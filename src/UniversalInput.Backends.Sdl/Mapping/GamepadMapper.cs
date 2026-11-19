@@ -29,6 +29,22 @@ internal static class GamepadMapper
 		return raw < 0 ? raw / 32768f : raw / 32767f;
 	}
 
+	/// <summary>Ось джойстика без раскладки: от −1 до 1, как у стиков (триггеры от 0 до 1 без раскладки определить нельзя).</summary>
+	public static float NormalizeRaw(short raw) => raw < 0 ? raw / 32768f : raw / 32767f;
+
+	private const int HatUp = 1;
+	private const int HatRight = 2;
+	private const int HatDown = 4;
+	private const int HatLeft = 8;
+
+	/// <summary>Hat как две оси: X от −1 (влево) до 1 (вправо), Y от −1 (вверх) до 1 (вниз) — «вверх» отрицательно, как у стиков.</summary>
+	public static (float X, float Y) Hat(int mask)
+	{
+		var x = ((mask & HatRight) != 0 ? 1 : 0) - ((mask & HatLeft) != 0 ? 1 : 0);
+		var y = ((mask & HatDown) != 0 ? 1 : 0) - ((mask & HatUp) != 0 ? 1 : 0);
+		return (x, y);
+	}
+
 	/// <summary>Акселерометр — в м/с², гироскоп — в рад/с (единицы SDL). Датчики отдельных половин (левая/правая) не передаются.</summary>
 	public static SensorKind? Sensor(int sdlSensor) => sdlSensor switch
 	{

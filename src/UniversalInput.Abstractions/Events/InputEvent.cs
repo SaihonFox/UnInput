@@ -151,6 +151,26 @@ public readonly record struct InputEvent
 		Int0 = (int)button,
 	};
 
+	/// <summary>
+	/// Кнопка джойстика без раскладки геймпада: <paramref name="button"/> — номер кнопки в том виде, как её сообщает устройство,
+	/// а не значение <see cref="GamepadButton"/>. Используется у устройств вида <see cref="InputDeviceKind.Joystick"/>.
+	/// </summary>
+	public static InputEvent JoystickDown(DeviceId device, int button, long timestamp = 0) => new()
+	{
+		Kind = InputEventKind.GamepadButtonPressed,
+		Device = device,
+		Timestamp = Now(timestamp),
+		Int0 = button,
+	};
+
+	public static InputEvent JoystickUp(DeviceId device, int button, long timestamp = 0) => new()
+	{
+		Kind = InputEventKind.GamepadButtonReleased,
+		Device = device,
+		Timestamp = Now(timestamp),
+		Int0 = button,
+	};
+
 	public static InputEvent GamepadUp(DeviceId device, GamepadButton button, long timestamp = 0) => new()
 	{
 		Kind = InputEventKind.GamepadButtonReleased,

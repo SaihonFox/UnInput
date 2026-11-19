@@ -18,6 +18,13 @@ internal static class SdlEventParser
 	public const uint TypeRemoved = 0x654;
 	public const uint TypeSensorUpdate = 0x659;
 
+	public const uint TypeJoystickAxisMotion = 0x600;
+	public const uint TypeJoystickHatMotion = 0x602;
+	public const uint TypeJoystickButtonDown = 0x603;
+	public const uint TypeJoystickButtonUp = 0x604;
+	public const uint TypeJoystickAdded = 0x605;
+	public const uint TypeJoystickRemoved = 0x606;
+
 	private const int WhichOffset = 16;
 
 	public static SdlEvent Parse(ReadOnlySpan<byte> raw)
@@ -50,6 +57,22 @@ internal static class SdlEventParser
 				// Sint32 sensor в смещении 20, затем float data[3].
 				return SdlEvent.SensorUpdate(
 					which, Read<int>(raw, 20), Read<float>(raw, 24), Read<float>(raw, 28), Read<float>(raw, 32));
+
+			case TypeJoystickAdded:
+				return SdlEvent.JoystickAdded(which);
+			case TypeJoystickRemoved:
+				return SdlEvent.JoystickRemoved(which);
+
+			case TypeJoystickButtonDown or TypeJoystickButtonUp when raw.Length >= 22:
+				return new SdlEvent(
+					type == TypeJoystickButtonDown ? SdlEventKind.JoystickButtonDown : SdlEventKind.JoystickButtonUp, which, raw[20]);
+
+			case TypeJoystickAxisMotion when raw.Length >= 26:
+				return SdlEvent.JoystickAxis(which, raw[20], Read<short>(raw, 24));
+
+			case TypeJoystickHatMotion when raw.Length >= 22:
+				// Uint8 hat в смещении 20, Uint8 value (маска SDL_HAT_*) в смещении 21.
+				return SdlEvent.JoystickHat(which, raw[20], raw[21]);
 
 			default:
 				return default;

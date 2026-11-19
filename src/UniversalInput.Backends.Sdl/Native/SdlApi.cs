@@ -30,6 +30,18 @@ internal sealed unsafe class SdlApi : IDisposable
 	public delegate* unmanaged[Cdecl]<nint, uint> GetGamepadProperties;
 	public delegate* unmanaged[Cdecl]<uint, byte*, byte, byte> GetBooleanProperty;
 	public delegate* unmanaged[Cdecl]<byte*, int, byte> WaitEventTimeout;
+	public delegate* unmanaged[Cdecl]<int*, uint*> GetJoysticks;
+	public delegate* unmanaged[Cdecl]<uint, byte> IsGamepad;
+	public delegate* unmanaged[Cdecl]<uint, nint> OpenJoystick;
+	public delegate* unmanaged[Cdecl]<nint, void> CloseJoystick;
+	public delegate* unmanaged[Cdecl]<nint, byte*> GetJoystickName;
+	public delegate* unmanaged[Cdecl]<nint, ushort> GetJoystickVendor;
+	public delegate* unmanaged[Cdecl]<nint, ushort> GetJoystickProduct;
+	public delegate* unmanaged[Cdecl]<nint, byte*> GetJoystickSerial;
+	public delegate* unmanaged[Cdecl]<nint, byte*> GetJoystickPath;
+	public delegate* unmanaged[Cdecl]<nint, int> GetNumJoystickAxes;
+	public delegate* unmanaged[Cdecl]<nint, int> GetNumJoystickButtons;
+	public delegate* unmanaged[Cdecl]<nint, int> GetNumJoystickHats;
 
 	private SdlApi(nint library)
 	{
@@ -108,6 +120,18 @@ internal sealed unsafe class SdlApi : IDisposable
 		GetGamepadProperties = (delegate* unmanaged[Cdecl]<nint, uint>)Export("SDL_GetGamepadProperties");
 		GetBooleanProperty = (delegate* unmanaged[Cdecl]<uint, byte*, byte, byte>)Export("SDL_GetBooleanProperty");
 		WaitEventTimeout = (delegate* unmanaged[Cdecl]<byte*, int, byte>)Export("SDL_WaitEventTimeout");
+		GetJoysticks = (delegate* unmanaged[Cdecl]<int*, uint*>)Export("SDL_GetJoysticks");
+		IsGamepad = (delegate* unmanaged[Cdecl]<uint, byte>)Export("SDL_IsGamepad");
+		OpenJoystick = (delegate* unmanaged[Cdecl]<uint, nint>)Export("SDL_OpenJoystick");
+		CloseJoystick = (delegate* unmanaged[Cdecl]<nint, void>)Export("SDL_CloseJoystick");
+		GetJoystickName = (delegate* unmanaged[Cdecl]<nint, byte*>)Export("SDL_GetJoystickName");
+		GetJoystickVendor = (delegate* unmanaged[Cdecl]<nint, ushort>)Export("SDL_GetJoystickVendor");
+		GetJoystickProduct = (delegate* unmanaged[Cdecl]<nint, ushort>)Export("SDL_GetJoystickProduct");
+		GetJoystickSerial = (delegate* unmanaged[Cdecl]<nint, byte*>)Export("SDL_GetJoystickSerial");
+		GetJoystickPath = (delegate* unmanaged[Cdecl]<nint, byte*>)Export("SDL_GetJoystickPath");
+		GetNumJoystickAxes = (delegate* unmanaged[Cdecl]<nint, int>)Export("SDL_GetNumJoystickAxes");
+		GetNumJoystickButtons = (delegate* unmanaged[Cdecl]<nint, int>)Export("SDL_GetNumJoystickButtons");
+		GetNumJoystickHats = (delegate* unmanaged[Cdecl]<nint, int>)Export("SDL_GetNumJoystickHats");
 	}
 
 	private nint Export(string name) => NativeLibrary.GetExport(_library, name);

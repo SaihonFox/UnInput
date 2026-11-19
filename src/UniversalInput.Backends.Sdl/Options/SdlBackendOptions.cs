@@ -17,6 +17,14 @@ public sealed class SdlBackendOptions
 	/// </summary>
 	public bool AllowBackgroundEvents { get; set; } = true;
 
+	/// <summary>
+	/// Показывать ли джойстики, которых нет в базе раскладок геймпадов SDL (штурвалы, педали, рули, ручки управления).
+	/// Такое устройство получает <c>Kind = Joystick</c>, а события приходят с номерами «как у устройства»: номер кнопки в <c>Int0</c>
+	/// события кнопки, номер оси в <c>Int0</c> события оси; каждый hat превращается в две оси после настоящих.
+	/// По умолчанию выключено: часть служебных устройств ОС (например, на Linux) тоже выглядит как джойстик.
+	/// </summary>
+	public bool IncludeUnmappedJoysticks { get; set; }
+
 	/// <summary>Сколько цикл ждёт событие до проверки остановки; задаёт и задержку остановки backend.</summary>
 	public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(100);
 

@@ -17,6 +17,18 @@ internal readonly record struct SdlEvent(
 
 	public static SdlEvent AxisMotion(uint which, int axis, short value) => new(SdlEventKind.Axis, which, axis, value);
 
+	public static SdlEvent JoystickAdded(uint which) => new(SdlEventKind.JoystickAdded, which);
+
+	public static SdlEvent JoystickRemoved(uint which) => new(SdlEventKind.JoystickRemoved, which);
+
+	public static SdlEvent JoystickButtonDown(uint which, int button) => new(SdlEventKind.JoystickButtonDown, which, button);
+
+	public static SdlEvent JoystickButtonUp(uint which, int button) => new(SdlEventKind.JoystickButtonUp, which, button);
+
+	public static SdlEvent JoystickAxis(uint which, int axis, short value) => new(SdlEventKind.JoystickAxis, which, axis, value);
+
+	public static SdlEvent JoystickHat(uint which, int hat, byte mask) => new(SdlEventKind.JoystickHat, which, hat, mask);
+
 	public static SdlEvent SensorUpdate(uint which, int sensor, float x, float y, float z) =>
 		new(SdlEventKind.Sensor, which, sensor, 0, x, y, z);
 }

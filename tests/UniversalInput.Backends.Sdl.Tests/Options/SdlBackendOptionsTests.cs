@@ -13,6 +13,7 @@ public class SdlBackendOptionsTests
 
 		Assert.True(options.AllowBackgroundEvents);
 		Assert.False(options.EnableSensors);
+		Assert.False(options.IncludeUnmappedJoysticks);
 		Assert.Null(options.LibraryPath);
 	}
 
