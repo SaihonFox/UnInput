@@ -88,7 +88,7 @@ public class SdlEventParserTests
 	public void UnknownTypes_BecomeOther()
 	{
 		Assert.Equal(SdlEventKind.Other, SdlEventParser.Parse(Raw(0x100, 1)).Kind);
-		Assert.Equal(SdlEventKind.Other, SdlEventParser.Parse(Raw(0x600, 1)).Kind);
+		Assert.Equal(SdlEventKind.Other, SdlEventParser.Parse(Raw(0x601, 1)).Kind);
 	}
 
 	[Fact]
